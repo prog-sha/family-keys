@@ -1,0 +1,15 @@
+.runtime/
+.gd/
+tmp/
+state/
+state
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+client.local.json
+
+settings.local.json
+.mcp.json
+.codex/
