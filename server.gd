@@ -1,7 +1,14 @@
 # Serve the family key UI, authenticated dotenv downloads, and metadata-only HTTP MCP.
+class_name FamilyKeysServer
+
 const Core = preload("core.gd")
 var vault := Core.new()
 var app := GD.web.app()
+var mcp_by_origin: Dictionary = {}
+const MCP_WRITE_FIELDS := {
+	"begin_intake": ["title", "purpose", "variable", "items"],
+	"manage_env": ["name", "action", "id", "title", "purpose"],
+}
 var cfg: Dictionary
 var root: String
 var writing := false
@@ -333,8 +340,6 @@ func prepare_change(args: Dictionary) -> String, Err:
 	var selected_id = args.get("id", "")
 	if not valid_env_name(variable) or action not in ["update", "delete", "totp"] or not selected_id is String:
 		return "", Err("Specify ENV name and update, delete, or totp")
-	if args.keys().any(func(field): return field not in ["name", "action", "id", "title", "purpose"]):
-		return "", Err("Use the encrypted CLI for values and otpauth")
 	if args.has("title") and (action != "update" or not args.title is String or args.title.strip_edges().is_empty() or args.title.length() > 160):
 		return "", Err("Invalid title")
 	if args.has("purpose") and (action != "update" or not args.purpose is String or args.purpose.to_utf8_buffer().size() > Core.MAX_ENV):
@@ -807,28 +812,14 @@ func audit(req: GDWebRequest, action: String, id: String) -> void:
 	var event := {"at": int(Time.get_unix_time_from_system()), "ip": req.get_value("device").ip, "member": req.get_value("device").member, "action": action, "id": id}
 	GD.file.append_text(root.path_join("audit.jsonl"), GD.data.var_to_json(event)! + "\n")
 
-func tool_list() -> Array:
-	var str_type := {"type":"string"}
-	var intake_fields := {"title":str_type,"purpose":str_type,"variable":str_type}
-	var one_intake := {"type":"object","properties":intake_fields,"required":["title","variable"]}
-	var intake_args := intake_fields.duplicate()
-	intake_args["items"] = {"type":"array","items":one_intake}
-	var id_schema := {"type":"object","properties":{"id":str_type},"required":["id"]}
-	return [
-		{"name":"search_env","description":"Search metadata. has_totp marks items with OTP.","inputSchema":{"type":"object","properties":{"query":str_type,"queries":{"type":"array","items":str_type}}}},
-		{"name":"prepare_env","description":"One encrypted download for vars. Skill bundle-json returns env and totp[ENV_NAME].","inputSchema":{"type":"object","properties":{"vars":{"type":"array","items":{"anyOf":[str_type,{"type":"object","properties":{"name":str_type,"id":str_type},"required":["name","id"]}]}},"id":str_type,"otp":str_type}}},
-		{"name":"manage_env","description":"Update, delete, or set otpauth for an ENV via skill CLI.","inputSchema":{"type":"object","properties":{"name":str_type,"action":{"enum":["update","delete","totp"]},"title":str_type,"purpose":str_type,"id":str_type},"required":["name","action"]}},
-		{"name":"family_skills","description":"List, search, or get a skill URL.","inputSchema":{"type":"object","properties":{"query":str_type,"name":str_type}}},
-		{"name":"begin_intake","description":"Register ENVs with optional otpauth in the form. items batches entries.","inputSchema":{"type":"object","properties":intake_args}},
-		{"name":"intake_status","description":"Get status.","inputSchema":id_schema},
-		{"name":"wait_intake","description":"Wait for registration.","inputSchema":id_schema}
-	]
-
-func search_for_agent(queries: Array) -> Dictionary:
+func search_env(query: Variant = "", queries: Variant = null) -> Variant:
+	var terms = [query] if queries == null else queries
+	if not terms is Array or terms.is_empty() or terms.size() > MAX_BATCH or terms.any(func(term): return not term is String or term.length() > 256):
+		return Err("Use 1–32 text queries")
 	var items: Array = []
 	var seen := {}
-	for query in queries:
-		for row in vault.search(query):
+	for term in terms:
+		for row in vault.search(term):
 			if seen.has(row.id):
 				continue
 			if items.size() == 12:
@@ -853,120 +844,121 @@ func intake_status(id: String) -> Dictionary:
 	var ticket := vault.intake(id)
 	return {"status":"ok","item_id":ticket.item_id} if ticket.get("status") == "completed" else {"status":ticket.get("status","not_found")}
 
+@wait
 func wait_intake(id: String) -> Dictionary:
 	var until := Time.get_ticks_msec() + 25000
-	while true:
-		var snapshot := intake_status(id)
-		if snapshot.status != "waiting" or Time.get_ticks_msec() >= until:
-			return snapshot
+	var snapshot := intake_status(id)
+	while snapshot.status == "waiting" and Time.get_ticks_msec() < until:
 		Task.sleep(0.25)
-	return {"status":"waiting"}
+		snapshot = intake_status(id)
+	return snapshot
 
 func valid_intake(item: Variant) -> bool:
 	return item is Dictionary and item.keys().all(func(field): return field in ["title", "purpose", "variable"]) and valid_env_name(item.get("variable")) and item.get("title") is String and not item.title.strip_edges().is_empty() and item.title.length() <= 160 and item.get("purpose", "") is String and str(item.get("purpose","")).length() <= 2048
 
-func rpc_error(id: Variant, code: int, message: String) -> Dictionary:
-	return {"jsonrpc": "2.0", "id": id, "error": {"code": code, "message": message}}
+# Link-bearing tools use the validated origin of their MCP connection.
+class MCPLinks:
+	var owner: WeakRef
+	var origin: String
 
-# Implement stateless Streamable HTTP JSON responses with no secret-reading tools.
-func mcp(req: GDWebRequest) -> GDWebResponse:
-	var msg, err := req.read_json()
-	if err or not msg is Dictionary or msg.get("jsonrpc") != "2.0" or not msg.get("method") is String:
-		return reply(rpc_error(null, -32600, "Invalid Request"), 400)
-	if not msg.has("id"):
-		return GD.web.text("", 202)
-	var result: Variant
-	match msg.method:
-		"initialize":
-			result = {"protocolVersion": "2025-03-26", "capabilities": {"tools": {}}, "serverInfo": {"name": "family-keys", "version": "0.1.0"}, "instructions": "Use the family-keys skill. ENV names are required."}
-		"ping":
-			result = {}
-		"tools/list":
-			result = {"tools": tool_list()}
-		"tools/call":
-			var params = msg.get("params", {})
-			if not params is Dictionary or not params.get("arguments", {}) is Dictionary:
-				return reply(rpc_error(msg.id, -32602, "Invalid params"))
-			var args: Dictionary = params.get("arguments", {})
-			var payload: Variant
-			match params.get("name", ""):
-				"search_env":
-					var queries = args.get("queries", [args.get("query", "")])
-					if not queries is Array or queries.is_empty() or queries.size() > MAX_BATCH or queries.any(func(query): return not query is String or query.length() > 256):
-						return reply(rpc_error(msg.id, -32602, "Use 1–32 text queries"))
-					payload = search_for_agent(queries)
-				"begin_intake":
-					var inputs = args.get("items", [args])
-					if not inputs is Array or inputs.is_empty() or inputs.size() > MAX_BATCH or inputs.any(func(entry): return not valid_intake(entry)):
-						return reply(rpc_error(msg.id, -32602, "Use title and ENV name. Put otpauth in the form."))
-					var variables := {}
-					for entry in inputs:
-						if variables.has(entry.variable) or not vault.env_key(entry.variable).is_empty():
-							return reply(rpc_error(msg.id, -32602, "ENV already registered: " + entry.variable))
-						variables[entry.variable] = true
-					var intake_id: String
-					if args.has("items"):
-						intake_id = vault.begin_intake_group(inputs)
-					else:
-						intake_id = vault.begin_intake(args).id
-					payload = {"id": intake_id, "url": ("https://" if req.is_tls() else "http://") + req.host + "/intake/" + intake_id}
-				"wait_intake":
-					payload = await wait_intake(str(args.get("id", "")))
-				"intake_status":
-					payload = intake_status(str(args.get("id", "")))
-				"manage_env":
-					var token, change_err := prepare_change(args)
-					if change_err:
-						return reply(rpc_error(msg.id, -32602, str(change_err)))
-					payload = {"url": ("https://" if req.is_tls() else "http://") + req.host + "/agent/manage/" + token}
-				"prepare_env":
-					if args.has("vars"):
-						var selections, selection_err := prepare_batch(args.vars)
-						if selection_err:
-							return reply(rpc_error(msg.id, -32602, str(selection_err)))
-						var now := Time.get_ticks_msec()
-						for key in prepared_batches.keys():
-							if prepared_batches[key].until <= now:
-								prepared_batches.erase(key)
-						var token := GD.id.uuid()
-						prepared_batches[token] = {"entries": selections, "until": now + 120000}
-						payload = {"url": ("https://" if req.is_tls() else "http://") + req.host + "/agent/batch/" + token}
-					elif args.has("otp"):
-						if not args.otp is String or args.otp.is_empty() or args.otp.length() > 256 or not args.get("id", "") is String:
-							return reply(rpc_error(msg.id, -32602, "Use the original ENV name"))
-						var rows := vault.search(args.otp).filter(func(row): return row.get("otp_variable") == args.otp and (not args.has("id") or row.id == args.id))
-						if rows.size() != 1:
-							return reply(rpc_error(msg.id, -32602, "Select the item id too if more than one item has this ENV name" if rows.size() > 1 else "OTP not configured"))
-						var origin := ("https://" if req.is_tls() else "http://") + req.host
-						payload = {"url": origin + "/agent/otp/" + rows[0].id}
-					else:
-						if not args.get("id", "") is String:
-							return reply(rpc_error(msg.id, -32602, "Invalid identifier"))
-						var row := vault.find(args.get("id", ""))
-						if row.is_empty() or not row.has_env:
-							result = {"isError": true, "content": [{"type": "text", "text": "Item was not found"}]}
-						else:
-							var base := ("https://" if req.is_tls() else "http://") + req.host
-							payload = {"url": base + "/agent/env/" + row.id, "script": base + "/assets/append-env.sh"}
-				"family_skills":
-					if not args.get("name", "") is String or not args.get("query", "") is String:
-						return reply(rpc_error(msg.id, -32602, "Use text for name or query"))
-					if args.get("name", "").is_empty():
-						var query: String = args.get("query", "").strip_edges().left(160)
-						var skills := skill_list(query)
-						payload = {"names": skills.map(func(skill): return skill.name)} if query.is_empty() else {"items": skills}
-					else:
-						var skill, read_err := vault.db.query_row("SELECT name FROM family_skills WHERE name=?", [args.name])
-						if read_err or skill.is_empty():
-							return reply(rpc_error(msg.id, -32602, "Skill not found"))
-						payload = {"url": ("https://" if req.is_tls() else "http://") + req.host + "/agent/skills/" + skill.name}
-				_:
-					return reply(rpc_error(msg.id, -32602, "Unknown tool"))
-			if result == null:
-				result = {"content": [{"type": "text", "text": GD.data.var_to_json(payload)!}]}
-		_:
-			return reply(rpc_error(msg.id, -32601, "Method not found"))
-	return reply({"jsonrpc": "2.0", "id": msg.id, "result": result})
+	var service: FamilyKeysServer:
+		get: return owner.get_ref()
+
+	func begin_intake(title: Variant = null, purpose: Variant = "", variable: Variant = null, items: Variant = null) -> Variant:
+		var single := {"title": title, "purpose": purpose, "variable": variable}
+		var inputs = [single] if items == null else items
+		if not inputs is Array or inputs.is_empty() or inputs.size() > MAX_BATCH or inputs.any(func(entry): return not service.valid_intake(entry)):
+			return Err("Use title and ENV name. Put otpauth in the form.")
+		var names := {}
+		for item in inputs:
+			if names.has(item.variable) or not service.vault.env_key(item.variable).is_empty():
+				return Err("ENV already registered: " + item.variable)
+			names[item.variable] = true
+		var id: String = service.vault.begin_intake(single).id if items == null else service.vault.begin_intake_group(inputs)
+		return {"id": id, "url": origin + "/intake/" + id}
+
+	func manage_env(name: Variant, action: Variant, id: Variant = "", title: Variant = null, purpose: Variant = null) -> Variant:
+		var args := {"name": name, "action": action, "id": id}
+		if title != null:
+			args["title"] = title
+		if purpose != null:
+			args["purpose"] = purpose
+		var token, err := service.prepare_change(args)
+		return err if err else {"url": origin + "/agent/manage/" + token}
+
+	func prepare_env(vars: Variant = null, id: Variant = "", otp: Variant = null) -> Variant:
+		if not id is String:
+			return Err("Invalid identifier")
+		if vars != null:
+			var selections, err := service.prepare_batch(vars)
+			if err:
+				return err
+			var now := Time.get_ticks_msec()
+			for key in service.prepared_batches.keys():
+				if service.prepared_batches[key].until <= now:
+					service.prepared_batches.erase(key)
+			var token := GD.id.uuid()
+			service.prepared_batches[token] = {"entries": selections, "until": now + 120000}
+			return {"url": origin + "/agent/batch/" + token}
+		if otp != null:
+			if not service.valid_env_name(otp):
+				return Err("Use the original ENV name")
+			var matches := service.vault.search(otp).filter(func(row): return row.get("otp_variable") == otp and (id.is_empty() or row.id == id))
+			if matches.size() != 1:
+				return Err("Select the item id too if more than one item has this ENV name" if matches.size() > 1 else "OTP not configured")
+			return {"url": origin + "/agent/otp/" + matches[0].id}
+		var row := service.vault.find(id)
+		if row.is_empty() or not row.has_env:
+			return Err("Item was not found")
+		return {"url": origin + "/agent/env/" + row.id, "script": origin + "/assets/append-env.sh"}
+
+	func family_skills(query: Variant = "", name: Variant = "") -> Variant:
+		if not query is String or not name is String:
+			return Err("Use text for name or query")
+		if name.is_empty():
+			var term: String = query.strip_edges().left(160)
+			var skills := service.skill_list(term)
+			return {"names": skills.map(func(skill): return skill.name)} if term.is_empty() else {"items": skills}
+		var skill, err := service.vault.db.query_row("SELECT name FROM family_skills WHERE name=?", [name])
+		return Err("Skill not found") if err or skill.is_empty() else {"url": origin + "/agent/skills/" + skill.name}
+
+func mcp_for_origin(origin: String) -> GDMCPServer, Err:
+	if mcp_by_origin.has(origin):
+		return mcp_by_origin[origin].server, null
+	var mcp_server := GD.ai.mcp.server("family-keys", {"version": "0.1.0"})
+	var links := MCPLinks.new()
+	links.owner = weakref(self)
+	links.origin = origin
+	var string := {"type": "string"}
+	var intake := {"type": "object", "properties": {"title": string, "variable": string, "purpose": string}, "required": ["title", "variable"]}
+	var selected := {"type": "object", "properties": {"name": string, "id": string}, "required": ["name", "id"]}
+	mcp_server.add_tool("search_env", search_env, {"description": "Search metadata. has_totp marks items with OTP.", "schema": {"query": string, "queries": {"type": "array", "items": string}}})?
+	mcp_server.add_tool("prepare_env", links.prepare_env, {"description": "One encrypted download. bundle-json returns env and totp[ENV_NAME].", "schema": {"vars": {"type": "array", "items": {"anyOf": [string, selected]}}, "id": string, "otp": string}})?
+	mcp_server.add_tool("manage_env", links.manage_env, {"description": "Update, delete, or set otpauth via skill CLI.", "schema": {"name": string, "action": {"type": "string", "enum": ["update", "delete", "totp"]}, "id": string, "title": string, "purpose": string}})?
+	mcp_server.add_tool("family_skills", links.family_skills, {"description": "List, search, or get a skill URL.", "schema": {"query": string, "name": string}})?
+	mcp_server.add_tool("begin_intake", links.begin_intake, {"description": "Register ENVs in a form with optional otpauth. Use title and variable, or items.", "schema": {"title": string, "purpose": string, "variable": string, "items": {"type": "array", "items": intake}}})?
+	mcp_server.add_tool("intake_status", intake_status, {"description": "Get status."})?
+	mcp_server.add_tool("wait_intake", wait_intake, {"description": "Wait for registration."})?
+	mcp_by_origin[origin] = {"server": mcp_server, "links": links}
+	return mcp_server, null
+
+@wait
+func mcp(req: GDWebRequest) -> GDWebResponse, Err:
+	# The runtime ignores unknown arguments. Reject them on write tools before creating a ticket.
+	var message, err := req.read_json()
+	if not err and message is Dictionary and (message.get("jsonrpc") != "2.0" or not message.get("method") is String):
+		return reply({"jsonrpc": "2.0", "id": null, "error": {"code": -32600, "message": "Invalid Request"}}, 400), null
+	if not err and message is Dictionary and message.get("method") == "tools/call" and message.get("params") is Dictionary:
+		if not message.has("id") or message.id == null:
+			return GD.web.text("", 202), null
+		var params: Dictionary = message.params
+		var allowed: Array = MCP_WRITE_FIELDS.get(params.get("name"), [])
+		var args = params.get("arguments", {})
+		if not allowed.is_empty() and (not args is Dictionary or args.keys().any(func(key): return key not in allowed)):
+			return reply({"jsonrpc": "2.0", "id": message.get("id"), "error": {"code": -32602, "message": "Use the form or encrypted CLI for secrets"}}), null
+	var origin := ("https://" if req.is_tls() else "http://") + req.host.to_lower()
+	var service := mcp_for_origin(origin)?
+	return service.handle(req)
 
 func main(args) -> int:
 	root = GD.cli.get_cwd().path_join("state") if args.is_empty() else str(args[0])

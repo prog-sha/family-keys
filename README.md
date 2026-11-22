@@ -4,7 +4,7 @@ LAN向けの共有保管庫。ブラウザで登録した環境変数と二段�
 
 ## 起動
 
-gd **0.9.0** の開発版（`Schema` と `Task` API対応）、POSIXシェル、curl、OpenSSLが必要です。gdはPATHに置くか、`KEYS_GD` で実行ファイルを指定します。[gdのソースと配布状況](https://github.com/prog-sha/gd)
+gd **0.9.0** の開発版（`@wait`、`Schema`、組み込み `GD.ai.mcp` 対応）、POSIXシェル、curl、OpenSSLが必要です。gdはPATHに置くか、`KEYS_GD` で実行ファイルを指定します。[gdのソースと配布状況](https://github.com/prog-sha/gd)
 
 ```sh
 ./keys check

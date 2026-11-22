@@ -60,6 +60,9 @@ def rpc(name,args=None):
 def rpc_response(name,args=None):
  return payload('POST','/mcp',{'jsonrpc':'2.0','id':1,'method':'tools/call','params':{'name':name,'arguments':args or {}}},{'Cookie':'','X-Keys-CSRF':''})[1]
 
+def rpc_failed(response):
+ return 'error' in response or response.get('result',{}).get('isError') is True
+
 def start():
  p=subprocess.Popen([str(GD),'serve','server.gd',str(RUN)],cwd=ROOT,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
  for _ in range(100):
@@ -188,7 +191,7 @@ try:
  check(status==200 and [row['variables'] for row in web_batch['items']]==[['WEB_BATCH_A'],['WEB_BATCH_B']],'Web batch makes one record per ENV')
  fields=[{'name':'WEB_ROLLBACK','value':'fixture-rollback'},fields[0]]
  check(request('POST','/api/items',{'name':'Duplicate batch fixture','split_env':True,'env_fields':fields})[0]==400 and not rpc('search_env',{'query':'WEB_ROLLBACK'})['items'],'duplicate ENV rejects the entire batch')
- check('error' in rpc_response('begin_intake',{'title':'Duplicate MCP fixture','variable':'WEB_BATCH_A'}),'MCP intake rejects an existing ENV name')
+ check(rpc_failed(rpc_response('begin_intake',{'title':'Duplicate MCP fixture','variable':'WEB_BATCH_A'})),'MCP intake rejects an existing ENV name')
  check('fixture-only' not in json.dumps(item),'save response contains metadata only')
  _,note=payload('POST','/api/items',{'name':'家族アカウント','owner':'Y','note':'パスワード fixture-note-password。サブアカウントの通知用。'})
  check(note['item']['owner']=='ALL','all family entries are shared without individual restrictions')
@@ -364,7 +367,7 @@ try:
  delete_url=rpc('manage_env',{'name':'BATCH_TWO','action':'delete'})['url']
  delete_command=['sh',str(cli),'--delete',delete_url,'BATCH_TWO']
  check(subprocess.run(delete_command[:-1]+['BATCH_ONE'],env=cli_env,cwd=RUN,capture_output=True,timeout=10).returncode!=0,'deletion proof is bound to the requested ENV')
- check(subprocess.run(delete_command,env=cli_env,cwd=RUN,capture_output=True,timeout=10).returncode==0 and 'error' in rpc_response('prepare_env',{'vars':['BATCH_TWO']}),'MCP deletes by ENV name')
+ check(subprocess.run(delete_command,env=cli_env,cwd=RUN,capture_output=True,timeout=10).returncode==0 and rpc_failed(rpc_response('prepare_env',{'vars':['BATCH_TWO']})),'MCP deletes by ENV name')
  totp_url=rpc('manage_env',{'name':'BATCH_ONE','action':'totp'})['url']
  check('error' in rpc_response('manage_env',{'name':'BATCH_ONE','action':'totp','seed':otp_uri}),'MCP rejects URI fields and accepts only setup metadata')
  totp_file=RUN/'fixture-otpauth'
@@ -411,7 +414,7 @@ try:
  check(p.returncode!=0 and target.read_bytes()==before,'modified ciphertext is rejected without touching dotenv')
  ticket=rpc('begin_intake',{'title':'入力してOK','purpose':'テスト用途','variable':'PASTE_KEY'})
  missing_env=payload('POST','/mcp',{'jsonrpc':'2.0','id':1,'method':'tools/call','params':{'name':'begin_intake','arguments':{'title':'Invalid fixture'}}})[1]
- check(missing_env['error']['code']==-32602,'MCP requires an explicit ENV name for registration')
+ check(rpc_failed(missing_env),'MCP requires an explicit ENV name for registration')
  check('error' in rpc_response('begin_intake',{'title':'Invalid fixture','variable':'UNREGISTERED','otpauth':otp_uri}),'MCP initial setup only takes metadata')
  group=rpc('begin_intake',{'items':[{'title':'Group A','variable':'GROUP_A'},{'title':'Group B','variable':'GROUP_B'}]})
  group_path=urlsplit(group['url']).path
@@ -440,6 +443,13 @@ try:
  check(p.returncode==0 and b'fixture-pasted' in out.read_bytes(),'human-submitted token can be decrypted and appended')
  methods=payload('POST','/mcp',{'jsonrpc':'2.0','id':1,'method':'tools/list'})[1]
  check(key not in json.dumps(methods),'MCP never publishes the family rule')
+ tools_list={tool['name']:tool['inputSchema'] for tool in methods['result']['tools']}
+ check(tools_list['wait_intake']['required']==['id'] and tools_list['prepare_env']['properties']['vars']['type']=='array','native MCP advertises the existing tool parameters')
+ init=payload('POST','/mcp',{'jsonrpc':'2.0','id':1,'method':'initialize','params':{'protocolVersion':'2025-03-26'}})[1]
+ check(init['result']['protocolVersion']=='2025-03-26' and init['result']['serverInfo']['name']=='family-keys','native MCP negotiates initialization')
+ msg={'jsonrpc':'2.0','id':1,'method':'tools/call','params':{'name':'prepare_env','arguments':{'id':receipt['item_id']}}}
+ alias=payload('POST','/mcp',msg,{'Host':f'127.0.0.1:{port}'})[1]['result']
+ check(alias['structuredContent']['url'].startswith(f'http://127.0.0.1:{port}/') and json.loads(alias['content'][0]['text'])==alias['structuredContent'],'URLs preserve the validated request alias in native MCP results')
  for index in range(13):
   status, _=payload('POST','/api/items',{'name':f'Bulk fixture {index}','note':'上限チェック'})
   assert status==200
@@ -465,7 +475,7 @@ func main(args) -> int:
  server=start()
  with zipfile.ZipFile(io.BytesIO(request('GET','/assets/family-keys-skill.zip')[1])) as bundle:
   check(bundle.read('family-keys/SKILL.md').decode()==distribution_saved['skill'],'edited distribution survives a restart')
- check('error' in rpc_response('prepare_env',{'vars':['BATCH_ONE']}) and 'error' in rpc_response('manage_env',{'name':'BATCH_ONE','action':'delete'}),'legacy collision has no implicit ENV lookup or delete target')
+ check(rpc_failed(rpc_response('prepare_env',{'vars':['BATCH_ONE']})) and rpc_failed(rpc_response('manage_env',{'name':'BATCH_ONE','action':'delete'})),'legacy collision has no implicit ENV lookup or delete target')
  duplicate_url=rpc('manage_env',{'name':'BATCH_ONE','id':'legacy-collision','action':'delete'})['url']
  check(subprocess.run(['sh',str(cli),'--delete',duplicate_url,'BATCH_ONE'],env=cli_env,cwd=RUN,capture_output=True,timeout=10).returncode==0 and 'url' in rpc('prepare_env',{'vars':['BATCH_ONE']}),'resolving a legacy collision restores exact ENV lookup')
  server.terminate();more_out,more_err=server.communicate(timeout=5);server=None
