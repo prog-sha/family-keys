@@ -329,6 +329,7 @@ try:
  check(request('POST','/agent/register',upload)[0]==200 and len(rpc('search_env',{'queries':['BATCH_ONE','BATCH_TWO']})['items'])==2,'replaying a CLI batch produces no duplicates')
  lookup=rpc('search_env',{'queries':['BATCH_ONE','TEST_PASSWORD']})
  check({v for row in lookup['items'] for v in row['variables']}=={'BATCH_ONE','TEST_PASSWORD'},'MCP searches multiple terms in a single call')
+ check(all(rpc_failed(rpc_response('search_env', args)) for args in [{'queries': []}, {'queries': [42]}, {'query': 'x'*257}]),'native schema validates typed search lists and limits')
  check(all('has_totp' not in row for row in lookup['items'] if row['variables']==['BATCH_ONE']),'search omits TOTP metadata for items without it')
  batch_url=rpc('prepare_env',{'vars':['BATCH_ONE','TEST_PASSWORD']})['url']
  mode_check='import sys,json,base64; header, env, codes=sys.stdin.read().splitlines(); assert header=="FK1-BATCH" and set(base64.b64decode(env).decode().splitlines())=={"BATCH_ONE=fixture-one","TEST_PASSWORD=fixture-password"}; otp=json.loads(codes); assert set(otp)=={"TEST_PASSWORD"} and otp["TEST_PASSWORD"] in sys.argv[1:]'
@@ -369,7 +370,7 @@ try:
  check(subprocess.run(delete_command[:-1]+['BATCH_ONE'],env=cli_env,cwd=RUN,capture_output=True,timeout=10).returncode!=0,'deletion proof is bound to the requested ENV')
  check(subprocess.run(delete_command,env=cli_env,cwd=RUN,capture_output=True,timeout=10).returncode==0 and rpc_failed(rpc_response('prepare_env',{'vars':['BATCH_TWO']})),'MCP deletes by ENV name')
  totp_url=rpc('manage_env',{'name':'BATCH_ONE','action':'totp'})['url']
- check('error' in rpc_response('manage_env',{'name':'BATCH_ONE','action':'totp','seed':otp_uri}),'MCP rejects URI fields and accepts only setup metadata')
+ check(rpc_failed(rpc_response('manage_env',{'name':'BATCH_ONE','action':'totp','seed':otp_uri})),'MCP rejects URI fields and accepts only setup metadata')
  totp_file=RUN/'fixture-otpauth'
  totp_file.write_text(otp_uri+'\n')
  setup_totp=['sh',str(cli),'--totp',totp_url,'BATCH_ONE']
@@ -415,7 +416,10 @@ try:
  ticket=rpc('begin_intake',{'title':'入力してOK','purpose':'テスト用途','variable':'PASTE_KEY'})
  missing_env=payload('POST','/mcp',{'jsonrpc':'2.0','id':1,'method':'tools/call','params':{'name':'begin_intake','arguments':{'title':'Invalid fixture'}}})[1]
  check(rpc_failed(missing_env),'MCP requires an explicit ENV name for registration')
- check('error' in rpc_response('begin_intake',{'title':'Invalid fixture','variable':'UNREGISTERED','otpauth':otp_uri}),'MCP initial setup only takes metadata')
+ check(rpc_failed(rpc_response('begin_intake',{'title':'Invalid fixture','variable':'UNREGISTERED','otpauth':otp_uri})),'MCP initial setup only takes metadata')
+ check(rpc_failed(rpc_response('begin_intake',{'items':[{'title':'Invalid fixture','variable':'UNREGISTERED','otpauth':otp_uri}]})),'MCP batch inputs only take metadata')
+ check(rpc_failed(rpc_response('manage_env',{'name':'UNREGISTERED','action':10})),'MCP rejects the wrong argument type')
+ check(rpc_failed(rpc_response('manage_env',{'name':'UNREGISTERED','action':'invalid'})),'MCP rejects unknown actions')
  group=rpc('begin_intake',{'items':[{'title':'Group A','variable':'GROUP_A'},{'title':'Group B','variable':'GROUP_B'}]})
  group_path=urlsplit(group['url']).path
  _,group_info=payload('GET',group_path+'/info')
