@@ -1,10 +1,12 @@
 # Family Keys
 
-LAN向けの共有保管庫。ブラウザで登録した環境変数と二段階認証を、MCP対応のエージェントから用途で探し、認証付きの暗号化ダウンロードで受け取れます。
+A shared credential vault for a trusted home network. Register secrets in the browser or through an encrypted CLI, search by purpose through MCP, and deliver selected credentials directly to a project.
 
-## 起動
+**[Project website](https://prog-sha.github.io/family-keys/)**
 
-gd **0.9.0** の開発版（`@wait`、`Schema`、`GDMCPContext.request` とMCPの引数検証に対応）、POSIXシェル、curl、OpenSSLが必要です。gdはPATHに置くか、`KEYS_GD` で実行ファイルを指定します。[gdのソースと配布状況](https://github.com/prog-sha/gd)
+## Run locally
+
+Use a **gd 0.9.0** build with `GD.data.to_json` and `mcp.add_tool(fn)`, plus a POSIX shell, curl, and OpenSSL. Put gd on your PATH or set `KEYS_GD` to its executable. See the [gd repository](https://github.com/prog-sha/gd) for runtime availability.
 
 ```sh
 ./keys check
@@ -12,39 +14,51 @@ gd **0.9.0** の開発版（`@wait`、`Schema`、`GDMCPContext.request` とMCP�
 ./keys serve
 ```
 
-初期化時に共有Webパスワードを設定します。初期状態では [http://localhost:49174](http://localhost:49174) で起動します。ポート、公開ホスト名、別名は `settings.example.json` を参考に、ローカルの `settings.local.json` に設定できます。LANで使う場合は、停止中にサーバーIPと許可範囲を指定します。
+Initialization prompts for a shared web password. The server starts on [localhost:49174](http://localhost:49174). To configure a different host or port, copy `settings.example.json` to `settings.local.json` before initialization.
+
+To allow LAN access, stop the server and provide its actual LAN IP and the smallest required client range. These example addresses are reserved for documentation.
 
 ```sh
 ./keys lan 192.0.2.10 192.0.2.0/24
 ./keys serve
 ```
 
-上のIPは説明用です。実際のIPと範囲に置き換えてください。許可元はログイン後の「接続する端末」でも変更できます。Webログインとブラウザでのキー入力にはLAN内のHTTPを使うため、信頼できるネットワーク内で運用してください。
+In the browser, use **Allowed devices** to edit network ranges or individual addresses. Use **EN / JA** in the upper right to switch languages.
 
-## 家族の端末をつなぐ
+## Connect a family device
 
-管理画面の「家族に配る」で、スキルと招待が付いた案内をコピーできます。案内をセットアップ先のエージェントに渡してください。招待は24時間・一度限りで、共通キーは端末の `~/.config/family-keys/key.env` に保存されます。
+In the vault, go to **Family setup** and copy the invitation instructions. Give the instructions to the agent on the receiving device. The invitation is valid once for 24 hours. Its helper stores the shared key in `~/.config/family-keys/key.env` by default.
 
-手動でMCPを追加する場合、名前は `family-keys`、接続先はサーバーの `/mcp` です。例として、同じPCから接続するCodexの設定は次のとおりです。
+For manual MCP configuration, register `family-keys` at the server's `/mcp` endpoint. In Codex, a local setup looks like this:
 
 ```toml
 [mcp_servers.family-keys]
 url = "http://localhost:49174/mcp"
 ```
 
-## 操作
+## Use the vault
 
-- `search_env` で名前・用途・ENV名を検索します。二段階認証がある項目には `has_totp: true` が付きます。
-- `prepare_env(vars)` で複数のENVを一括取得できます。スキルの `append-env.sh URL .env` は既存の.envに追記し、`append-env.sh URL - bundle-json 処理` は `env` と `totp` を持つJSONをローカル処理に渡します。
-- `begin_intake(items)` で登録フォームを開きます。ENV名は必須かつ一意で、otpauth URIも初回に入力できます。元の.envからの登録にはスキルの `register-env.sh` を使います。
-- `manage_env` でENV名を指定して変更・削除・二段階認証の設定ができます。
-- `family_skills` で家族用スキルを一覧・検索・取得できます。
+- **Find:** `search_env` searches names, purposes, and ENV names. `has_totp: true` indicates that an item can generate a two-factor code.
+- **Receive:** `prepare_env(vars)` creates one authenticated, encrypted download. `append-env.sh URL .env` appends to a dotenv file. `append-env.sh URL - bundle-json COMMAND` passes `env` and current `totp` codes to a local command.
+- **Register:** `begin_intake(items)` opens a form with an optional otpauth field. ENV names are required and unique. Use `register-env.sh` to send selected entries directly from a local dotenv file.
+- **Update:** `manage_env` prepares a link for changing an ENV, deleting it, or replacing its two-factor setup.
+- **Share workflows:** `family_skills` lists and finds shared skills. **Family setup** lets you edit the distributed skill and instructions.
 
-配布用の `SKILL.md` と案内は管理画面で編集できます。元の手順は [SKILL.md](skills/family-keys/SKILL.md) を参照してください。
+See the [Family Keys skill](skills/family-keys/SKILL.md) for command syntax.
 
-## 保存とテスト
+## Two-factor setup is write-only
 
-ストレージと鍵は `state/` に保存されます。バックアップする場合は、サーバーを停止してからディレクトリ全体を保護された場所へ保存してください。テストは作業ディレクトリ内の `tmp/` にダミーデータを作ります。
+Enter an otpauth URL, a Base32 seed, or a supported QR code. After saving, the vault API and UI expose setup status and the current code through their designated paths. The original URL, QR image, and seed are never returned. To change them, enter new setup details. Leaving the setup field blank keeps the current seed. The server retains encrypted seed material because it needs it to generate codes.
+
+## Secure LAN operation
+
+- Keep the vault on a trusted home VLAN or Wi-Fi network. Block it from guest networks and the Internet. Avoid router port forwarding or UPnP exposure. Apply the same policy to IPv4 and IPv6 at the host firewall.
+- Allow specific client IPs or a dedicated subnet. The server checks the socket peer address and validates the HTTP Host and Origin. Keep hostnames explicit and avoid publishing the service through a reverse proxy that rewrites those checks without an equivalent policy.
+- Use DHCP reservations to keep allowlist entries stable. MAC and IP addresses alone are weak device identifiers. Where the router or managed switch supports it, use DHCP snooping, IP Source Guard, and Dynamic ARP Inspection to enforce address bindings.
+- Encrypted downloads and CLI uploads protect credential payloads. Plain HTTP does not protect browser sign-in, form submission, or MCP metadata on a hostile network. Prefer loopback for management or a properly trusted HTTPS connection for remote browser use.
+- Protect `state/` and the client shared key with filesystem permissions. Encrypt backups with a separate key and restrict access to the backup. A lost client may retain credentials already saved to its `.env`; rotate those credentials at their original services.
+
+## Test
 
 ```sh
 ./keys check
@@ -52,4 +66,4 @@ python3 tests/integration.py
 node tests/intake_test.js
 ```
 
-QR読み取り実装の著作権表示は [licenses/quirc.txt](licenses/quirc.txt) を参照してください。
+Tests use synthetic fixtures under `tmp/`. QR decoding includes code adapted from quirc under the [ISC license](licenses/quirc.txt).

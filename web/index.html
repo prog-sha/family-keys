@@ -1,70 +1,70 @@
 <!doctype html>
-<html lang="ja">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>Keys — 家族の鍵を、ひとつに。</title>
+  <title>Family Keys</title>
   <link rel="stylesheet" href="/assets/style.css">
-  <script src="/assets/app.js" defer></script>
+  <script src="/assets/locale.js" defer></script><script src="/assets/app.js" defer></script>
 </head>
 <body class="locked">
-  <section id="login-view" class="login-page"><a class="brand" href="/">⌘ keys.</a><form id="login-form"><div class="eyebrow">JUST BETWEEN US</div><h1>おかえりなさい。</h1><p>家族の保管庫を開きます。</p><label class="field">パスワード<input id="login-password" type="password" autocomplete="current-password" required autofocus></label><div id="login-error" class="form-error" role="alert" hidden></div><button class="primary" id="login-button">保管庫を開く</button></form></section>
+  <section id="login-view" class="login-page"><div class="language-corner"><select class="language-select" data-language aria-label="Language"><option value="en">EN</option><option value="ja">JA</option></select></div><a class="brand" href="/">⌘ keys.</a><form id="login-form"><div class="eyebrow">JUST BETWEEN US</div><h1>Welcome back.</h1><p>Sign in to the family vault.</p><label class="field">Password<input id="login-password" type="password" autocomplete="current-password" required autofocus></label><div id="login-error" class="form-error" role="alert" hidden></div><button class="primary" id="login-button">Unlock vault</button></form></section>
   <aside class="sidebar">
-    <a class="brand" href="/" aria-label="Keys ホーム"><span class="brand-icon">⌘</span> keys<span class="brand-dot">.</span></a>
+    <a class="brand" href="/" aria-label="Family Keys home"><span class="brand-icon">⌘</span> keys<span class="brand-dot">.</span></a>
     <div class="house">FAMILY WORKSPACE</div>
-    <nav aria-label="メイン"><button class="nav active" id="nav-vault"><span>▦</span> キー保管庫 <span id="nav-count" class="nav-count">0</span></button><button class="nav" id="nav-connect"><span>↗</span> AIにつなぐ</button><button class="nav" id="nav-family"><span>↗</span> 家族に配る</button><button class="nav" id="nav-skills"><span>◇</span> Skills</button><button class="nav" id="nav-devices"><span>◉</span> 接続する端末</button></nav>
-    <div class="sidebar-bottom"><div class="local"><i></i> ローカルネットワーク</div><p>家の中で保管。<br>必要な場所へ、そっと届ける。</p><div class="identity"><span id="avatar" class="avatar">—</span><div><strong id="identity-name">接続中</strong><small id="identity-ip">LAN</small></div><span class="shield">◇</span></div></div>
+    <nav aria-label="Main navigation"><button class="nav active" id="nav-vault"><span>▦</span> Vault <span id="nav-count" class="nav-count">0</span></button><button class="nav" id="nav-connect"><span>↗</span> Connect an agent</button><button class="nav" id="nav-family"><span>↗</span> Family setup</button><button class="nav" id="nav-skills"><span>◇</span> Skills</button><button class="nav" id="nav-devices"><span>◉</span> Allowed devices</button></nav>
+    <div class="sidebar-bottom"><div class="local"><i></i> Local network</div><p>Stored at home.<br>Delivered when needed.</p><div class="identity"><span id="avatar" class="avatar">—</span><div><strong id="identity-name">Connecting</strong><small id="identity-ip">LAN</small></div><span class="shield">◇</span></div></div>
   </aside>
   <main>
-    <header class="topbar"><span>家族のワークスペース <span class="breadcrumb">/</span> <strong id="breadcrumb">キー保管庫</strong></span><div class="header-actions"><span class="secure"><i></i> LAN 接続</span><button id="logout" class="text-button">ログアウト</button></div></header>
+    <header class="topbar"><span>Family workspace <span class="breadcrumb">/</span> <strong id="breadcrumb">Vault</strong></span><div class="header-actions"><span class="secure"><i></i> LAN connection</span><button id="logout" class="text-button">Sign out</button><select class="language-select" data-language aria-label="Language"><option value="en">EN</option><option value="ja">JA</option></select></div></header>
     <section id="vault-view" class="view">
-      <div class="page-head"><div><div class="eyebrow">A HOME FOR YOUR SECRETS</div><h1>家族の鍵を、ひとつに。</h1><p>覚えるのは名前だけ。必要なキーを、必要なプロジェクトへ。</p></div><button class="primary" id="add">＋ キーを登録</button></div>
-      <div class="intro"><div class="intro-icon">↳</div><div><strong>「DiscordのBotの鍵を、こいつから貰って」</strong><p>文章で登録、用途で検索。.envはAIに見せず直接保存。</p></div><button class="text-button" id="intro-connect">つなぎ方を見る <span>↗</span></button></div>
-      <div class="toolbar"><div class="tabs"><button class="selected">すべて <span id="total">0</span></button></div><label class="search"><span>⌕</span><input id="search" type="search" placeholder="サービス・アカウント・用途で全文検索" aria-label="キーを検索"><kbd>/</kbd></label></div>
-      <div class="list-label"><span id="list-title">みんなの保管庫</span><span id="list-count">0 ITEMS</span></div>
+      <div class="page-head"><div><div class="eyebrow">A HOME FOR YOUR SECRETS</div><h1>Family vault</h1><p>Find credentials by name or purpose.</p></div><button class="primary" id="add">＋ Add key</button></div>
+      <div class="intro"><div class="intro-icon">↳</div><div><strong>Ask your agent for the Discord bot key.</strong><p>Search by purpose and save directly to .env without exposing values to the agent.</p></div><button class="text-button" id="intro-connect">See setup <span>↗</span></button></div>
+      <div class="toolbar"><div class="tabs"><button class="selected">All <span id="total">0</span></button></div><label class="search"><span>⌕</span><input id="search" type="search" placeholder="Search by service, account, or purpose" aria-label="Search keys"><kbd>/</kbd></label></div>
+      <div class="list-label"><span id="list-title">Shared vault</span><span id="list-count">0 ITEMS</span></div>
       <div id="items" class="cards" aria-live="polite"></div>
-      <div id="empty" class="empty" hidden><div class="empty-icon">⌘</div><h2>最初の鍵を、ここに。</h2><p>ENV名と値を入力して登録できます。<br>DiscordもGitHubも、名前で見つかるように。</p><button class="primary" id="empty-add">＋ キーを登録</button></div>
-      <div class="footnote"><span>◇ 値は暗号化して保管します</span><span>ALL · 家族で共用</span></div>
+      <div id="empty" class="empty" hidden><div class="empty-icon">⌘</div><h2>Add your first key</h2><p>Use an ENV name and value to add a key.<br>Use a name you can search for later.</p><button class="primary" id="empty-add">＋ Add key</button></div>
+      <div class="footnote"><span>◇ Encrypted at rest</span><span>ALL · Family shared</span></div>
     </section>
-    <section id="connect-view" class="view narrow" hidden><h1>AIにつなぐ</h1><div class="panel"><h2>MCP設定</h2><pre id="mcp-config"></pre><button class="text-button" id="connect-family">スキルと招待を配る ↗</button></div></section>
+    <section id="connect-view" class="view narrow" hidden><h1>Connect an agent</h1><div class="panel"><h2>MCP configuration</h2><pre id="mcp-config"></pre><button class="text-button" id="connect-family">Share the skill and an invite ↗</button></div></section>
     <section id="family-view" class="view narrow" hidden>
-      <h1>家族に配る</h1>
+      <h1>Family setup</h1>
       <form id="family-distribution-form" class="panel" hidden>
-        <label class="field">MCP登録の案内<textarea id="family-guide" required spellcheck="false" aria-describedby="family-guide-hint"></textarea></label>
-        <p id="family-guide-hint">3つのURLはコピー時に入ります。招待は24時間・1回限りです。</p>
-        <label class="field">配布する SKILL.md<textarea id="family-skill-source" rows="12" required spellcheck="false"></textarea></label>
+        <label class="field">MCP setup instructions<textarea id="family-guide" required spellcheck="false" aria-describedby="family-guide-hint"></textarea></label>
+        <p id="family-guide-hint">The links are filled in when you copy. Each invite is valid once for 24 hours.</p>
+        <label class="field">Distributed SKILL.md<textarea id="family-skill-source" rows="12" required spellcheck="false"></textarea></label>
         <div class="device-actions">
-          <button class="primary" id="save-family-distribution" type="submit" disabled>変更を保存</button>
-          <button class="secondary" id="copy-family-instructions" type="button" disabled>招待付きの案内をコピー</button>
+          <button class="primary" id="save-family-distribution" type="submit" disabled>Save changes</button>
+          <button class="secondary" id="copy-family-instructions" type="button" disabled>Copy instructions with invite</button>
         </div>
-        <textarea id="family-instructions" aria-label="コピー用の招待付き案内" readonly spellcheck="false" hidden></textarea>
+        <textarea id="family-instructions" aria-label="Setup instructions with invite" readonly spellcheck="false" hidden></textarea>
       </form>
     </section>
     <section id="skills-view" class="view narrow" hidden>
-      <h1>ファミリーSkills</h1>
+      <h1>Family skills</h1>
       <div class="panel">
-        <label class="field">登録済みのスキル <select id="skill-select"><option value="">新規</option></select></label>
+        <label class="field">Saved skills <select id="skill-select"><option value="">New</option></select></label>
         <form id="skill-form">
-          <label class="field">名前<input id="skill-name" required maxlength="64" pattern="[a-z0-9][a-z0-9\-]{0,63}" placeholder="例：deploy-site"></label>
-          <label class="field">1行の概要<input id="skill-summary" required maxlength="160"></label>
-          <label class="field">本文（Markdown）<textarea id="skill-body" required spellcheck="false"></textarea></label>
-          <div class="device-actions"><button class="primary" id="skill-save" type="submit">保存</button><button type="button" class="secondary" id="skill-delete" hidden>削除</button></div>
+          <label class="field">Name<input id="skill-name" required maxlength="64" pattern="[a-z0-9][a-z0-9\-]{0,63}" placeholder="Example: deploy-site"></label>
+          <label class="field">One-line summary<input id="skill-summary" required maxlength="160"></label>
+          <label class="field">Markdown body<textarea id="skill-body" required spellcheck="false"></textarea></label>
+          <div class="device-actions"><button class="primary" id="skill-save" type="submit">Save</button><button type="button" class="secondary" id="skill-delete" hidden>Delete</button></div>
         </form>
       </div>
     </section>
     <section id="devices-view" class="view" hidden>
-      <div class="page-head"><h1>接続する端末</h1></div>
-      <div id="device-denied" class="panel" hidden>この端末には、接続設定を変更する権限がありません。</div>
+      <div class="page-head"><h1>Allowed devices</h1></div>
+      <div id="device-denied" class="panel" hidden>This device cannot change access settings.</div>
       <form id="device-form">
         <div class="panel">
-          <label class="field" for="allowed-networks">許可するネットワーク範囲</label>
+          <label class="field" for="allowed-networks">Allowed networks</label>
           <textarea id="allowed-networks" rows="3" spellcheck="false" placeholder="192.0.2.0/24" aria-describedby="networks-hint"></textarea>
-          <p id="networks-hint">1行に1範囲。例：192.0.2.0/24 または 192.0.2.*</p>
-          <label class="field" for="allowed-ips">許可する固定IP</label>
+          <p id="networks-hint">One network per line. Example: 192.0.2.0/24 or 192.0.2.*</p>
+          <label class="field" for="allowed-ips">Allowed fixed IPs</label>
           <textarea id="allowed-ips" rows="3" spellcheck="false" placeholder="192.0.2.10" aria-describedby="ips-hint"></textarea>
-          <p id="ips-hint">1行に1アドレス。範囲か固定IPのどちらかに当てはまれば接続できます。</p>
-          <button class="primary" type="submit" id="device-save" disabled>接続設定を保存</button>
+          <p id="ips-hint">One address per line. A matching network or fixed IP permits access.</p>
+          <button class="primary" type="submit" id="device-save" disabled>Save access settings</button>
         </div>
       </form>
     </section>
@@ -73,43 +73,43 @@
   <dialog id="editor">
     <form id="entry-form">
       <div class="dialog-head">
-        <h2 id="editor-title">キーを登録</h2>
-        <button type="button" class="icon-button" id="close-editor" aria-label="閉じる">×</button>
+        <h2 id="editor-title">Add key</h2>
+        <button type="button" class="icon-button" id="close-editor" aria-label="Close">×</button>
       </div>
-      <label class="field">名前<input id="entry-name" maxlength="160" placeholder="例：サムネイル保存用" autocomplete="off"></label>
-      <label class="field">用途・メモ<textarea id="entry-note" placeholder="例：画像をオブジェクトストレージへ保存する" spellcheck="false"></textarea></label>
+      <label class="field">Name<input id="entry-name" maxlength="160" placeholder="Example: Thumbnail storage" autocomplete="off"></label>
+      <label class="field">Purpose and notes<textarea id="entry-note" placeholder="Example: Upload images to object storage" spellcheck="false"></textarea></label>
       <div id="env-fields"></div>
-      <button class="text-button" type="button" id="add-env-field">＋ ENVを追加</button>
-      <button type="button" class="text-button small" id="toggle-secret">値を表示</button>
+      <button class="text-button" type="button" id="add-env-field">＋ Add ENV</button>
+      <button type="button" class="text-button small" id="toggle-secret">Show values</button>
       <details id="env-preview">
-        <summary>保存済みの .env を確認</summary>
-        <label class="field">.env（読み取り専用）<textarea id="entry-env" class="masked" readonly spellcheck="false"></textarea></label>
+        <summary>View saved .env</summary>
+        <label class="field">.env (read only)<textarea id="entry-env" class="masked" readonly spellcheck="false"></textarea></label>
       </details>
       <details class="panel">
-        <summary>二段階認証（TOTP）</summary>
-        <div id="editor-otp-row" hidden><button id="editor-otp" type="button" class="secondary">認証コードを表示</button> <output id="editor-otp-code"></output></div>
-        <label class="field">元のENV名<input id="otp-variable" maxlength="256" placeholder="例：SERVICE_PASSWORD" autocomplete="off"></label>
-        <label class="field">設定キーまたは otpauth URL<input id="otp-seed" type="password" maxlength="4096" autocomplete="new-password" placeholder="登録済みなら空欄で保持"></label>
-        <label id="otp-remove-row" hidden><input id="otp-remove" type="checkbox">認証コードの設定を解除する</label>
+        <summary>Two-factor authentication (TOTP)</summary><p class="subtle">Setup details can only be replaced. Only the current code can be shown.</p>
+        <div id="editor-otp-row" hidden><button id="editor-otp" type="button" class="secondary">Show current code</button> <output id="editor-otp-code"></output></div>
+        <label class="field">Original ENV name<input id="otp-variable" maxlength="256" placeholder="Example: SERVICE_PASSWORD" autocomplete="off"></label>
+        <label class="field">New setup key or otpauth URL<input id="otp-seed" type="password" maxlength="4096" autocomplete="off" autocapitalize="off" placeholder="Leave blank to keep the current setup"></label>
+        <label id="otp-remove-row" hidden><input id="otp-remove" type="checkbox">Remove two-factor setup</label>
       </details>
       <div id="form-error" class="form-error" role="alert" hidden></div>
-      <div class="dialog-footer"><button class="primary" type="submit" id="save-entry">登録する</button></div>
+      <div class="dialog-footer"><button class="primary" type="submit" id="save-entry">Save key</button></div>
     </form>
   </dialog>
-  <dialog id="confirm"><div class="dialog-head"><h2>このキーを削除しますか？</h2></div><p id="confirm-name"></p><p class="subtle">保管庫から削除します。すでに配信した.envは残ります。</p><div class="confirm-actions"><button id="cancel-delete" class="secondary">戻る</button><button id="do-delete" class="danger">削除する</button></div></dialog>
+  <dialog id="confirm"><div class="dialog-head"><h2>Delete this key?</h2></div><p id="confirm-name"></p><p class="subtle">This removes the key from the vault. Existing .env files keep their copies.</p><div class="confirm-actions"><button id="cancel-delete" class="secondary">Cancel</button><button id="do-delete" class="danger">Delete key</button></div></dialog>
   <dialog id="otp-settings" aria-labelledby="otp-settings-title">
     <form id="otp-settings-form">
-      <div class="dialog-head"><h2 id="otp-settings-title">二段階認証追加</h2><button id="close-otp-settings" type="button" class="icon-button" aria-label="閉じる">×</button></div>
-      <p id="otp-settings-name"></p>
-      <label class="field">元のENV名 <select id="otp-settings-variable" required></select></label>
+      <div class="dialog-head"><h2 id="otp-settings-title">Add two-factor authentication</h2><button id="close-otp-settings" type="button" class="icon-button" aria-label="Close">×</button></div>
+      <p id="otp-settings-name"></p><p class="subtle">Setup details can only be replaced. Only the current code can be shown.</p>
+      <label class="field">Original ENV name <select id="otp-settings-variable" required></select></label>
       <div class="panel" id="otp-paste-area" tabindex="0">
-        <p>ここにQR画像を貼り付け</p>
-        <label class="field">または画像を選ぶ <input id="otp-qr-file" type="file" accept="image/*"></label>
+        <p>Paste a QR image here</p>
+        <label class="field">Or choose an image <input id="otp-qr-file" type="file" accept="image/*"></label>
         <p id="otp-qr-status" role="status" hidden></p>
       </div>
-      <label class="field">設定キーまたは otpauth URL<input id="otp-settings-seed" type="password" maxlength="4096" autocomplete="new-password" spellcheck="false"></label>
+      <label class="field">New setup key or otpauth URL<input id="otp-settings-seed" type="password" maxlength="4096" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
       <div id="otp-settings-error" class="form-error" role="alert" hidden></div>
-      <div class="dialog-footer"><button id="otp-settings-save" type="submit" class="primary">保存</button></div>
+      <div class="dialog-footer"><button id="otp-settings-save" type="submit" class="primary">Save</button></div>
     </form>
   </dialog>
   <div id="toast" class="toast" role="status" hidden></div>

@@ -1,13 +1,11 @@
 # Keep arbitrary service notes and exact dotenv documents in authenticated SQLite records.
-extends RefCounted
+@import "./totp"
 
 const MAX_ENV := 1048576
-const Totp = preload("totp.gd")
 var root: String
 var key: PackedByteArray
 var db: GDSQLiteDB
 var index: GDSQLiteDB
-var crypto := Crypto.new()
 
 func open(dir: String) -> Err:
 	root = dir
@@ -29,7 +27,7 @@ func open(dir: String) -> Err:
 	index = GD.db.sqlite.open(":memory:")!
 	index.exec("CREATE VIRTUAL TABLE lookup USING fts5(id UNINDEXED, text, tokenize='trigram')")!
 	for saved in db.query_all("SELECT record FROM items")!:
-		var row, parse_err := GD.data.json_to_var(saved.record)
+		var row, parse_err := GD.data.from_json(saved.record)
 		if parse_err or not row is Dictionary or not verify(row):
 			return Err("Vault authentication failed")
 		var body, body_err := unpack(row)
@@ -45,19 +43,20 @@ func open(dir: String) -> Err:
 func signature(row: Dictionary) -> PackedByteArray:
 	var unsigned := row.duplicate(true)
 	unsigned.erase("mac")
-	var text := GD.data.var_to_json(unsigned, {"deterministic": true})!
-	return GD.data.hmac_sha256(key.slice(32, 64), text.to_utf8_buffer())
+	var text := GD.data.to_json(unsigned, {"deterministic": true})!
+	return GD.data.hmac_sha256(key.slice(32, 64), text)
 
 func verify(row: Dictionary) -> bool:
-	var mac, err := GD.data.base64_to_raw(str(row.get("mac", "")))
-	return err == null and crypto.constant_time_compare(signature(row), mac)
+	var mac, err := GD.data.from_base64(str(row.get("mac", "")))
+	return err == null and GD.data.equal(signature(row), mac)
 
 func metadata(row: Dictionary) -> Dictionary:
-	var out := row.duplicate(true)
-	out.erase("iv")
-	out.erase("cipher")
-	out.erase("mac")
+	var out := {}
+	for field in ["id", "name", "aliases", "owner", "created", "updated", "revision", "variables", "has_env", "otp_variable"]:
+		if row.has(field):
+			out[field] = row[field]
 	return out
+
 
 # Keep full prose searchable in an in-memory FTS index, never as plaintext on disk.
 func index_row(row: Dictionary, note: String) -> void:
@@ -66,14 +65,14 @@ func index_row(row: Dictionary, note: String) -> void:
 	index.exec("INSERT INTO lookup(id,text) VALUES(?,?)", [row.id, text])!
 
 func canonical(text: String) -> String:
-	var normalized := text.to_lower().replace("　", " ")
-	for pair in [["ディスコード", "discord"], ["ギットハブ", "github"], ["ボット", "bot"]]:
+	var normalized := text.to_lower().replace("\u3000", " ")
+	for pair in [["\u30C7\u30A3\u30B9\u30B3\u30FC\u30C9", "discord"], ["\u30AE\u30C3\u30C8\u30CF\u30D6", "github"], ["\u30DC\u30C3\u30C8", "bot"]]:
 		normalized = normalized.replace(pair[0], pair[1])
 	return normalized
 
 func search(query: String = "") -> Array:
 	var normalized := canonical(query)
-	for filler in ["に使う", "に使える", "のための", "のやつ", "したい", "ください", "トークン", "パスワード", "の", "用の", "する"]:
+	for filler in ["\u306B\u4F7F\u3046", "\u306B\u4F7F\u3048\u308B", "\u306E\u305F\u3081\u306E", "\u306E\u3084\u3064", "\u3057\u305F\u3044", "\u304F\u3060\u3055\u3044", "\u30C8\u30FC\u30AF\u30F3", "\u30D1\u30B9\u30EF\u30FC\u30C9", "\u306E", "\u7528\u306E", "\u3059\u308B"]:
 		normalized = normalized.replace(filler, " ")
 	var terms := normalized.split(" ", false)
 	var scores: Dictionary = {}
@@ -88,7 +87,7 @@ func search(query: String = "") -> Array:
 			scores[hit.id] = scores.get(hit.id, 0.0) + 1.0
 	var out: Array = []
 	for saved in db.query_all("SELECT record FROM items")!:
-		var row: Dictionary = GD.data.json_to_var(saved.record)!
+		var row: Dictionary = GD.data.from_json(saved.record)!
 		if not query.strip_edges().is_empty() and not scores.has(row.id):
 			continue
 		var item := metadata(row)
@@ -101,7 +100,7 @@ func find(id: String) -> Dictionary:
 	var saved, err := db.query_row("SELECT record FROM items WHERE id=?", [id])
 	if err:
 		return {}
-	var row: Dictionary = GD.data.json_to_var(saved.record)!
+	var row: Dictionary = GD.data.from_json(saved.record)!
 	return row if verify(row) else {}
 
 func env_key(name: String) -> Dictionary:
@@ -116,25 +115,25 @@ func refresh_env_key(name: String) -> void:
 # Encrypt prose and original bytes; metadata alone can be returned to an agent.
 func format_env_fields(fields: Variant, old: Dictionary) -> String, Err:
 	if not fields is Array or fields.is_empty() or fields.size() > 256:
-		return "", Err("ENV名を1つ以上入力してください")
+		return "", Err("Enter at least one ENV name.")
 	var pattern := RegEx.new()
 	pattern.compile("\\A[A-Za-z_][A-Za-z0-9_]{0,255}\\z")
 	var values := {}
 	for field in fields:
 		if not field is Dictionary or not field.get("name") is String or not field.get("value") is String or field.name == "FAMILY_KEYS_K" or not pattern.search(field.name):
-			return "", Err("ENV名には半角英数字とアンダースコアを使ってください")
+			return "", Err("Use ASCII letters, digits, and underscores for ENV names.")
 		if values.has(field.name):
-			return "", Err("同じENV名は複数登録できません")
+			return "", Err("An ENV name can only be used once.")
 		values[field.name] = field.value
 	if old.get("has_env", false):
 		var existing, err := env_bytes(old)
 		if err:
 			return "", err
 		var current := existing.get_string_from_utf8()
-		var parsed, parse_err := GD.data.dotenv_to_dict(current)
+		var parsed, parse_err := GD.data.from_dotenv(current)
 		if not parse_err and parsed == values:
 			return current, null
-	return GD.data.dict_to_dotenv(values)
+	return GD.data.to_dotenv(values)
 
 func put(input: Dictionary) -> Dictionary, Err:
 	var saved, err := put_many([input])
@@ -155,11 +154,11 @@ func put_record(input: Dictionary) -> Dictionary, Err:
 		return {}, Err("Item was not found")
 	if input.has("env_fields"):
 		if input.has("env") or input.has("env_base64"):
-			return {}, Err("ENVの入力方法を1つにしてください")
+			return {}, Err("Choose one ENV input method.")
 		if not old.is_empty() and input.get("revision") != old.revision:
-			return {}, Err("別の画面で変更されています。開き直してください")
+			return {}, Err("This item changed in another tab. Reopen it and try again.")
 		if input.env_fields is Array and input.env_fields.size() > maxi(1, old.get("variables", []).size()):
-			return {}, Err("新しいENV名は別の項目として登録してください")
+			return {}, Err("Register a new ENV name as a separate item.")
 		var generated, fields_err := format_env_fields(input.env_fields, old)
 		if fields_err:
 			return {}, fields_err
@@ -168,7 +167,7 @@ func put_record(input: Dictionary) -> Dictionary, Err:
 	if input.has("env_base64"):
 		if not input.env_base64 is String:
 			return {}, Err("Invalid document encoding")
-		var decoded, decode_err := GD.data.base64_to_raw(input.env_base64)
+		var decoded, decode_err := GD.data.from_base64(input.env_base64)
 		if decode_err:
 			return {}, Err("Invalid document encoding")
 		source = decoded
@@ -181,7 +180,7 @@ func put_record(input: Dictionary) -> Dictionary, Err:
 		return {}, Err("Enter a note, a password, or a dotenv document")
 	var vars := {}
 	if not source.is_empty():
-		var parsed, parse_err := GD.data.dotenv_to_dict(env)
+		var parsed, parse_err := GD.data.from_dotenv(env)
 		if parse_err or parsed.is_empty():
 			return {}, Err("Use KEY=value in the optional dotenv field")
 		vars = parsed
@@ -199,43 +198,43 @@ func put_record(input: Dictionary) -> Dictionary, Err:
 		otp = old_body.get("otp", {})
 	var otp_update = input.get("otp", {})
 	if not otp_update is Dictionary:
-		return {}, Err("認証コードの入力を確認してください")
+		return {}, Err("Check the two-factor setup input.")
 	if otp_update.get("remove") == true:
 		otp = {}
 	elif not otp_update.is_empty():
 		var variable = otp_update.get("variable")
 		var seed = otp_update.get("seed", "")
 		if not variable is String or not seed is String or not vars.has(variable):
-			return {}, Err("認証コードには同じ項目にある元のENV名を指定してください")
-		var decoded := Totp.decode(seed)
+			return {}, Err("Two-factor authentication must use an ENV name on the same item.")
+		var decoded := totp.decode(seed)
 		if not seed.is_empty():
 			if decoded.is_empty():
-				return {}, Err("Base32設定キー、または6桁・30秒・SHA1のTOTP用otpauth URLを入力してください")
-			otp = {"seed": GD.data.raw_to_base64(decoded)}
+				return {}, Err("Enter a Base32 setup key or a TOTP otpauth URL using six digits, 30 seconds, and SHA-1.")
+			otp = {"seed": GD.data.to_base64(decoded)}
 		if otp.is_empty():
-			return {}, Err("認証コードの設定キーを入力してください")
+			return {}, Err("Enter a two-factor setup key.")
 		otp["variable"] = variable
 	if not otp.is_empty() and not vars.has(otp.variable):
-		return {}, Err("認証コードに紐づくENV名を残すか、認証コード設定を解除してください")
+		return {}, Err("Keep the ENV name linked to two-factor authentication or remove the setup.")
 	var now := int(Time.get_unix_time_from_system())
 	var row := {"id": id, "owner": "ALL", "name": name.strip_edges(), "aliases": aliases, "variables": vars.keys(), "has_env": not source.is_empty(), "updated": now, "created": old.get("created", now), "revision": int(old.get("revision", 0)) + 1}
-	var body := {"env_base64": GD.data.raw_to_base64(source), "note": note}
+	var body := {"env_base64": GD.data.to_base64(source), "note": note}
 	if not otp.is_empty():
 		row["otp_variable"] = otp.variable
 		body["otp"] = otp
-	var plain := GD.data.var_to_json(body)!.to_utf8_buffer()
-	var iv := crypto.generate_random_bytes(16)
+	var plain := GD.data.to_json(body)!.to_utf8_buffer()
+	var iv := GD.data.random(16)
 	var padding := 16 - plain.size() % 16
 	for i in padding:
 		plain.append(padding)
 	var aes := AESContext.new()
 	if aes.start(AESContext.MODE_CBC_ENCRYPT, key.slice(0, 32), iv) != OK:
 		return {}, Err("Encryption could not start")
-	row["iv"] = GD.data.raw_to_base64(iv)
-	row["cipher"] = GD.data.raw_to_base64(aes.update(plain))
+	row["iv"] = GD.data.to_base64(iv)
+	row["cipher"] = GD.data.to_base64(aes.update(plain))
 	aes.finish()
-	row["mac"] = GD.data.raw_to_base64(signature(row))
-	var _, save_err := db.exec("INSERT INTO items(id,record) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET record=excluded.record", [id, GD.data.var_to_json(row)!])
+	row["mac"] = GD.data.to_base64(signature(row))
+	var _, save_err := db.exec("INSERT INTO items(id,record) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET record=excluded.record", [id, GD.data.to_json(row)!])
 	var ticket = input.get("intake_id", "")
 	if not save_err and ticket is String and not ticket.is_empty():
 		var changed, ticket_err := db.exec("UPDATE intakes SET status='completed', item_id=? WHERE id=? AND status='waiting'", [id, ticket])
@@ -270,8 +269,8 @@ func put_many(inputs: Array) -> Array, Err:
 func decrypt(row: Dictionary) -> PackedByteArray, Err:
 	if not verify(row):
 		return PackedByteArray(), Err("Vault authentication failed")
-	var iv, iv_err := GD.data.base64_to_raw(row.iv)
-	var cipher, cipher_err := GD.data.base64_to_raw(row.cipher)
+	var iv, iv_err := GD.data.from_base64(row.iv)
+	var cipher, cipher_err := GD.data.from_base64(row.cipher)
 	if iv_err or cipher_err or iv.size() != 16 or cipher.is_empty() or cipher.size() % 16 != 0:
 		return PackedByteArray(), Err("Vault record is invalid")
 	var aes := AESContext.new()
@@ -291,7 +290,7 @@ func unpack(row: Dictionary) -> Dictionary, Err:
 	var bytes, err := decrypt(row)
 	if err:
 		return {}, err
-	var value, parse_err := GD.data.json_to_var(bytes.get_string_from_utf8())
+	var value, parse_err := GD.data.from_json(bytes.get_string_from_utf8())
 	if parse_err or not value is Dictionary:
 		return {}, Err("Record is invalid")
 	return value, null
@@ -300,7 +299,7 @@ func env_bytes(row: Dictionary) -> PackedByteArray, Err:
 	var body, err := unpack(row)
 	if err:
 		return PackedByteArray(), err
-	return GD.data.base64_to_raw(body.env_base64)
+	return GD.data.from_base64(body.env_base64)
 
 func erase(id: String) -> Err:
 	db.exec("BEGIN IMMEDIATE")!
@@ -318,7 +317,7 @@ func erase(id: String) -> Err:
 func begin_intake(data: Dictionary, id: String = "") -> Dictionary:
 	if id.is_empty():
 		id = GD.id.uuid()
-	var title := str(data.get("title", "新しいキー"))
+	var title := str(data.get("title", "New key"))
 	var note := str(data.get("purpose", ""))
 	var variable := str(data.get("variable", "API_KEY"))
 	db.exec("INSERT INTO intakes(id,title,note,variable,status,created) VALUES(?,?,?,?,'waiting',?)", [id, title, note, variable, int(Time.get_unix_time_from_system())])!
@@ -333,14 +332,14 @@ func begin_intake_group(entries: Array) -> String:
 	var members: Array = []
 	for entry in entries:
 		members.append(begin_intake(entry).id)
-	db.exec("INSERT INTO intake_groups(id,members) VALUES(?,?)", [id, GD.data.var_to_json(members)!])!
+	db.exec("INSERT INTO intake_groups(id,members) VALUES(?,?)", [id, GD.data.to_json(members)!])!
 	return id
 
 func intake_group(id: String) -> Array:
 	var row, err := db.query_row("SELECT members FROM intake_groups WHERE id=?", [id])
 	if err:
 		return []
-	var ids: Array = GD.data.json_to_var(row.members)!
+	var ids: Array = GD.data.from_json(row.members)!
 	return ids.map(func(member): return intake(member))
 
 # Write atomically through a private sibling directory and reject symbolic links.

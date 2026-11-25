@@ -1,6 +1,4 @@
 # QR Model 2 alignment and block sizes from quirc (ISC), see licenses/quirc.txt.
-extends RefCounted
-
 const VERSIONS := [
 	[26, [], [[26, 16, 1], [26, 19, 1], [26, 9, 1], [26, 13, 1]]],
 	[44, [6, 18], [[44, 28, 1], [44, 34, 1], [44, 16, 1], [44, 22, 1]]],

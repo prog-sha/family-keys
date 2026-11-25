@@ -18,7 +18,7 @@ function done() {
   document.title = 'OK — Keys';
 }
 function setupGroup(items) {
-  $('paste-title').textContent = 'キーをまとめて登録';
+  $('paste-title').textContent = t("Register multiple keys");
   const form = $('paste-form');
   $('paste-value').closest('label').remove();
   const totpTemplate = $('paste-totp');
@@ -56,7 +56,7 @@ function error(message) { $('paste-error').textContent = message; $('paste-error
 async function load() {
   const response = await fetch(location.pathname + '/info', { cache: 'no-store' });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || '入力画面を開けませんでした');
+  if (!response.ok) throw new Error(data.error ? t(data.error) : t("Could not open the registration form."));
   if (data.status === 'completed') { done(); return false; }
   nonce = data.csrf;
   if (data.items) { if (!groupInputs) setupGroup(data.items); }
@@ -82,10 +82,10 @@ $('paste-form').addEventListener('submit', async event => {
       if (response.ok) { done(); return; }
       const data = await response.json();
       if (attempt === 0 && response.status === 403 && data.code === 'INTAKE_NONCE_STALE') { if (!await load()) return; continue; }
-      throw new Error(data.error || '保存できませんでした');
+      throw new Error(data.error ? t(data.error) : t("Could not save."));
     }
   } catch (e) { error(e.message); }
   finally { $('paste-ok').disabled = false; }
 });
-load().catch(e => error(e.message));
+keysLocale.ready.then(load).catch(e => error(e.message));
 })();

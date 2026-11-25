@@ -14,12 +14,12 @@ function showError(text) { $('error-banner').textContent = text; $('error-banner
 async function api(path, options = {}) {
   const response = await fetch(path, { ...options, cache: 'no-store', headers: { 'Content-Type': 'application/json', 'X-Keys-CSRF': state.csrf, ...(options.headers || {}) } });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || '処理を完了できませんでした。');
+  if (!response.ok) throw new Error(data.error ? t(data.error) : t("The request could not be completed."));
   return data;
 }
 function node(tag, className, text) { const el = document.createElement(tag); if (className) el.className = className; if (text !== undefined) el.textContent = text; return el; }
 function button(text, handler, className = '') { const el = node('button', className, text); el.type = 'button'; el.addEventListener('click', handler); return el; }
-function relativeTime(timestamp) { const days = Math.floor((Date.now() / 1000 - timestamp) / 86400); return days === 0 ? '今日 更新' : `${days}日前に更新`; }
+function relativeTime(timestamp) { const days = Math.floor((Date.now() / 1000 - timestamp) / 86400); return days === 0 ? t("Updated today") : t("Updated {days} days ago").replace("{days}", days); }
 function render() {
   const filtered = state.items;
   $('items').replaceChildren();
@@ -27,27 +27,27 @@ function render() {
     const card = node('article', 'card');
     const top = node('div', 'card-top');
     const lower = `${item.name} ${item.aliases}`.toLowerCase();
-    const service = lower.includes('discord') || lower.includes('ディスコード') ? 'discord' : lower.includes('github') ? 'github' : 'generic';
+    const service = lower.includes('discord') || lower.includes('\u30C7\u30A3\u30B9\u30B3\u30FC\u30C9') ? 'discord' : lower.includes('github') ? 'github' : 'generic';
     const icon = node('div', `service-icon ${service}`, service === 'discord' ? '◒' : service === 'github' ? '⌥' : '⌘');
     const label = node('div'); label.append(node('h3', '', item.name));
-    top.append(icon, label, node('span', 'badge', item.owner === 'ALL' ? 'ALL · 共用' : item.owner));
+    top.append(icon, label, node('span', 'badge', item.owner === 'ALL' ? t("ALL · Shared") : item.owner));
     const vars = node('div', 'variable-list');
     item.variables.slice(0, 3).forEach(key => vars.append(node('code', '', key)));
     if (item.variables.length > 3) vars.append(node('code', '', `+${item.variables.length - 3}`));
     const bottom = node('div', 'card-bottom'); const actions = node('div', 'card-actions');
-    actions.append(button('変更', () => openEditor(item)));
-    if (item.variables.length > 0) actions.append(button(item.otp_variable ? '二段階認証設定' : '二段階認証追加', () => openOtpSettings(item)));
-    actions.append(button('削除', () => confirmDelete(item), 'delete'));
+    actions.append(button(t("Edit"), () => openEditor(item)));
+    if (item.variables.length > 0) actions.append(button(item.otp_variable ? t("Replace two-factor setup") : t("Add two-factor authentication"), () => openOtpSettings(item)));
+    actions.append(button(t("Delete"), () => confirmDelete(item), 'delete'));
     bottom.append(node('span', '', relativeTime(item.updated)), actions); card.append(top, vars, bottom); $('items').append(card);
   }
   $('total').textContent = state.items.length; $('nav-count').textContent = state.items.length; $('list-count').textContent = `${filtered.length} ITEMS`;
   $('empty').hidden = filtered.length > 0;
   if (!filtered.length && $('search').value) {
-    $('empty').querySelector('h2').textContent = '見つかりませんでした。';
-    $('empty').querySelector('p').textContent = '別の名前や用途で探してみてください。';
+    $('empty').querySelector('h2').textContent = t("No matching keys");
+    $('empty').querySelector('p').textContent = t("Try a different name or purpose.");
   } else {
-    $('empty').querySelector('h2').textContent = '最初の鍵を、ここに。';
-    $('empty').querySelector('p').textContent = 'ENV名と値を入力して登録できます。DiscordもGitHubも、名前で見つかるように。';
+    $('empty').querySelector('h2').textContent = t("Add your first key");
+    $('empty').querySelector('p').textContent = t("Use an ENV name and value to add a key.");
   }
 }
 let searchSequence = 0;
@@ -68,27 +68,27 @@ function clearSecret() {
   $('otp-seed').value = '';
   $('editor-otp-code').textContent = '';
   clearTimeout(otpTimer);
-  $('toggle-secret').textContent = '値を表示';
+  $('toggle-secret').textContent = t("Show values");
 }
 function addEnvField(field = {}) {
   const row = node('div', 'env-field-row');
-  const nameLabel = node('label', 'field', 'ENV名（必須）');
+  const nameLabel = node('label', 'field', t("ENV name (required)"));
   const name = node('input', 'env-name');
   name.required = true;
   name.maxLength = 256;
   name.pattern = '[A-Za-z_][A-Za-z0-9_]*';
-  name.placeholder = '例：DISCORD_PASSWORD';
+  name.placeholder = t("Example: DISCORD_PASSWORD");
   name.autocomplete = 'off';
   name.value = field.name || '';
   nameLabel.append(name);
-  const valueLabel = node('label', 'field', '値');
+  const valueLabel = node('label', 'field', t("Value"));
   const value = node('textarea', $('entry-env').classList.contains('masked') ? 'env-value masked' : 'env-value');
   value.rows = 2;
   value.spellcheck = false;
   value.autocomplete = 'off';
   value.value = field.value ?? '';
   valueLabel.append(value);
-  const remove = button('このENVを削除', () => {
+  const remove = button(t("Remove ENV"), () => {
     row.remove();
     updateEnvFieldButtons();
   }, 'env-remove text-button small');
@@ -112,8 +112,8 @@ async function openEditor(item = null) {
   $('otp-variable').value = item?.otp_variable || '';
   $('otp-remove-row').hidden = !item?.otp_variable;
   $('editor-otp-row').hidden = !item?.otp_variable;
-  $('editor-title').textContent = item ? 'メモ・キーを変更' : 'メモ・キーを登録';
-  $('save-entry').textContent = item ? '変更を保存' : '登録する';
+  $('editor-title').textContent = item ? t("Edit key") : t("Add key");
+  $('save-entry').textContent = item ? t("Save changes") : t("Save key");
   $('form-error').hidden = true;
   if (item) {
     try {
@@ -134,7 +134,7 @@ function openOtpSettings(item) {
   const dialog = $('otp-settings');
   $('otp-settings-form').reset();
   dialog.dataset.item = item.id;
-  $('otp-settings-title').textContent = item.otp_variable ? '二段階認証設定' : '二段階認証追加';
+  $('otp-settings-title').textContent = item.otp_variable ? t("Replace two-factor setup") : t("Add two-factor authentication");
   $('otp-settings-name').textContent = item.name;
   $('otp-settings-variable').replaceChildren(...item.variables.map(name => new Option(name, name)));
   $('otp-settings-variable').value = item.otp_variable || item.variables[0];
@@ -142,7 +142,7 @@ function openOtpSettings(item) {
   otpImageGeneration++;
   $('otp-qr-status').hidden = true;
   $('otp-settings-save').disabled = false;
-  $('otp-settings-seed').placeholder = item.otp_variable ? '空欄で現在の設定キーを保持' : 'Base32または otpauth://…';
+  $('otp-settings-seed').placeholder = item.otp_variable ? t("Leave blank to keep the current setup") : t("Base32 or otpauth://…");
   $('otp-settings-error').hidden = true;
   dialog.showModal();
   $('otp-paste-area').focus();
@@ -152,11 +152,11 @@ async function readOtpImage(file) {
   const status = $('otp-qr-status');
   const save = $('otp-settings-save');
   otpRaster = null;
-  status.textContent = '画像を準備しています…';
+  status.textContent = t("Preparing image…");
   status.hidden = false;
   save.disabled = true;
   try {
-    if (!file.type.startsWith('image/') || file.size > 16 * 1024 * 1024) throw new Error('16MB以下の画像を選んでください');
+    if (!file.type.startsWith('image/') || file.size > 16 * 1024 * 1024) throw new Error(t("Choose an image smaller than 16 MB."));
     const image = await createImageBitmap(file);
     try {
       if (generation !== otpImageGeneration) return;
@@ -164,7 +164,7 @@ async function readOtpImage(file) {
       const canvas = document.createElement('canvas');
       canvas.width = Math.floor(image.width * ratio);
       canvas.height = Math.floor(image.height * ratio);
-      if (Math.min(canvas.width, canvas.height) < 21) throw new Error('画像が小さすぎます');
+      if (Math.min(canvas.width, canvas.height) < 21) throw new Error(t("The image is too small."));
       const context = canvas.getContext('2d', {willReadFrequently: true});
       context.fillStyle = '#fff';
       context.fillRect(0, 0, canvas.width, canvas.height);
@@ -176,10 +176,10 @@ async function readOtpImage(file) {
       for (let i = 0; i < gray.length; i += 16384) binary += String.fromCharCode(...gray.subarray(i, i + 16384));
       otpRaster = {width:canvas.width, height:canvas.height, gray:btoa(binary)};
       $('otp-settings-seed').value = '';
-      status.textContent = 'QR画像を受け付けました。保存で登録します。';
+      status.textContent = t("QR image ready. Save to apply it.");
     } finally { image.close(); }
   } catch (error) {
-    if (generation === otpImageGeneration) status.textContent = error.message || '画像を開けませんでした';
+    if (generation === otpImageGeneration) status.textContent = error.message || t("Could not open the image.");
   } finally { if (generation === otpImageGeneration) save.disabled = false; }
 }
 $('otp-qr-file').addEventListener('change', event => { if (event.target.files[0]) readOtpImage(event.target.files[0]); });
@@ -210,7 +210,7 @@ $('otp-settings-form').addEventListener('submit', async event => {
     await api(`/api/items/${encodeURIComponent(dialog.dataset.item)}/otp/settings`, { method: 'POST', body: JSON.stringify(body) });
     dialog.close();
     await refresh();
-    toast('TOTPを保存しました');
+    toast(t("Two-factor settings saved"));
   } catch (error) {
     if (dialog.open) { errorText.textContent = error.message; errorText.hidden = false; }
     else showError(error.message);
@@ -242,7 +242,7 @@ $('editor-otp').addEventListener('click', async () => {
 function confirmDelete(item) { state.deleting = item.id; $('confirm-name').textContent = item.name; $('confirm').showModal(); }
 async function switchView(view) {
   for (const name of ['vault', 'connect', 'family', 'skills', 'devices']) { $(`${name}-view`).hidden = view !== name; $(`nav-${name}`).classList.toggle('active', view === name); }
-  $('breadcrumb').textContent = { vault: 'キー保管庫', connect: 'AIにつなぐ', family: '家族に配る', skills: 'ファミリーSkills', devices: '接続する端末' }[view];
+  $('breadcrumb').textContent = { vault: t("Vault"), connect: t("Connect an agent"), family: t("Family setup"), skills: t("Family skills"), devices: t("Allowed devices") }[view];
   $('error-banner').hidden = true;
   if (view === 'skills') { try { await refreshSkills(); } catch (error) { showError(error.message); } }
   if (view === 'family' && !familyDistribution) {
@@ -274,7 +274,7 @@ function fillSkill(skill = {}) {
 }
 async function refreshSkills(name = '') {
   const {items} = await api('/api/skills');
-  $('skill-select').replaceChildren(new Option('新規', ''), ...items.map(skill => new Option(skill.name, skill.name)));
+  $('skill-select').replaceChildren(new Option(t("New"), ''), ...items.map(skill => new Option(skill.name, skill.name)));
   $('skill-select').value = name;
   fillSkill(name ? await api(`/api/skills/${encodeURIComponent(name)}`) : {});
 }
@@ -289,18 +289,18 @@ $('skill-form').addEventListener('submit', async event => {
   try {
     await api('/api/skills', { method:'POST', body: JSON.stringify({name, summary:$('skill-summary').value, body:$('skill-body').value}) });
     await refreshSkills(name);
-    toast('スキルを保存しました');
+    toast(t("Skill saved"));
   } catch (error) { showError(error.message); }
 });
 $('skill-delete').addEventListener('click', async () => {
   const name = $('skill-select').value;
-  if (!name || !window.confirm(`「${name}」を削除しますか？`)) return;
+  if (!name || !window.confirm(t("Delete {name}?").replace("{name}", name))) return;
   try { await api(`/api/skills/${encodeURIComponent(name)}`, {method:'DELETE'}); await refreshSkills(); }
   catch (error) { showError(error.message); }
 });
 $('entry-form').addEventListener('submit', async event => {
   event.preventDefault(); $('save-entry').disabled = true; $('form-error').hidden = true;
-  const body = { name: $('entry-name').value.trim() || '新しいメモ', note: $('entry-note').value };
+  const body = { name: $('entry-name').value.trim() || t("New entry"), note: $('entry-note').value };
   if (state.editing) {
     body.id = state.editing.id;
     body.revision = state.editing.revision;
@@ -318,7 +318,7 @@ $('entry-form').addEventListener('submit', async event => {
     await api('/api/items', { method: 'POST', body: JSON.stringify(body) });
     $('editor').close();
     await refresh();
-    toast('保存しました');
+    toast(t("Saved"));
   }
   catch (error) { $('form-error').textContent = error.message; $('form-error').hidden = false; }
   finally { $('save-entry').disabled = false; }
@@ -326,12 +326,12 @@ $('entry-form').addEventListener('submit', async event => {
 $('toggle-secret').addEventListener('click', () => {
   const masked = $('entry-env').classList.toggle('masked');
   $('env-fields').querySelectorAll('.env-value').forEach(field => field.classList.toggle('masked', masked));
-  $('toggle-secret').textContent = masked ? '値を表示' : '値を隠す';
+  $('toggle-secret').textContent = masked ? t("Show values") : t("Hide values");
 });
 $('close-editor').addEventListener('click', () => $('editor').close());
 $('editor').addEventListener('close', clearSecret);
 $('cancel-delete').addEventListener('click', () => $('confirm').close());
-$('do-delete').addEventListener('click', async () => { try { await api(`/api/items/${encodeURIComponent(state.deleting)}`, { method: 'DELETE' }); $('confirm').close(); await refresh(); toast('キーを削除しました'); } catch (error) { showError(error.message); } });
+$('do-delete').addEventListener('click', async () => { try { await api(`/api/items/${encodeURIComponent(state.deleting)}`, { method: 'DELETE' }); $('confirm').close(); await refresh(); toast(t("Key deleted")); } catch (error) { showError(error.message); } });
 for (const id of ['add', 'empty-add']) $(id).addEventListener('click', () => openEditor());
 for (const view of ['vault','connect','family','skills','devices']) $(`nav-${view}`).addEventListener('click', () => switchView(view));
 $('intro-connect').addEventListener('click', () => switchView('connect'));
@@ -365,7 +365,7 @@ $('family-distribution-form').addEventListener('submit', async event => {
     fillFamilyDistribution(data);
     $('family-instructions').value = '';
     $('family-instructions').hidden = true;
-    toast('配布文面を保存しました');
+    toast(t("Distribution text saved"));
   } catch (error) { showError(error.message); }
   finally { familyBusy = false; updateFamilyButtons(); }
 });
@@ -385,10 +385,10 @@ $('copy-family-instructions').addEventListener('click', async () => {
         field.focus(); field.select();
         if (!document.execCommand('copy')) throw new Error('Copy unavailable');
       }
-      toast('指示文をコピーしました');
+      toast(t("Instructions copied"));
     } catch {
       field.focus(); field.select();
-      showError('指示文を選択しました。コピー操作で取得できます。');
+      showError(t("The instructions are selected. Use Copy to grab them."));
     }
   } catch (error) {
     showError(error.message);
@@ -413,7 +413,7 @@ $('device-form').addEventListener('submit', async event => {
     state.devices = devices;
     ipField.value = devices.map(device => device.ip).join('\n');
     field.value = data.allowed_networks.join('\n');
-    toast('接続設定を保存しました');
+    toast(t("Access settings saved"));
   } catch (error) { showError(error.message); }
   finally { save.disabled = false; }
 });
@@ -426,8 +426,8 @@ async function boot() {
   const data = await api('/api/status');
   if (data.authenticated === false) { document.body.classList.add('locked'); $('login-view').hidden = false; return; }
   document.body.classList.remove('locked'); state.me = data.device; state.csrf = data.csrf;
-  $('avatar').textContent = 'ALL'; $('identity-name').textContent = '家族で共用'; $('identity-ip').textContent = state.me.ip; $('mcp-config').textContent = JSON.stringify({ mcpServers: { 'family-keys': { type: 'http', url: data.mcp_url } } }, null, 2);
-  if (location.protocol !== 'https:') { const badge = document.querySelector('.secure'); badge.replaceChildren(node('i'), document.createTextNode('LAN 接続')); }
+  $('avatar').textContent = 'ALL'; $('identity-name').textContent = t("Family shared"); $('identity-ip').textContent = state.me.ip; $('mcp-config').textContent = JSON.stringify({ mcpServers: { 'family-keys': { type: 'http', url: data.mcp_url } } }, null, 2);
+  if (location.protocol !== 'https:') { const badge = document.querySelector('.secure'); badge.replaceChildren(node('i'), document.createTextNode(t("LAN connection"))); }
   await refresh();
 }
 $('login-form').addEventListener('submit', async event => {
@@ -442,4 +442,4 @@ $('logout').addEventListener('click', async () => {
     location.reload();
   } catch (error) { showError(error.message); }
 });
-boot().catch(() => showError('接続できません。IP・ポート・サーバーの起動状態を確認してください。'));
+keysLocale.ready.then(boot).catch(() => showError(t("Could not connect. Check the server IP, port, and status.")));

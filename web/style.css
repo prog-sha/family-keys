@@ -20,3 +20,8 @@ body.paste-page{display:flex;align-items:center;justify-content:center;min-heigh
 .env-field-row { border-bottom: 1px solid var(--line); margin: 12px 0; padding-bottom: 10px; }
 .env-field-row textarea { height: auto; }
 #env-preview { margin-top: 16px; }
+
+/* Keep language switching available before sign-in and on one-time forms. */
+.language-corner { position: absolute; top: 20px; right: 20px; }
+.language-select { font: inherit; font-size: .875rem; padding: .375rem .5rem; color: var(--green); background: #fff; border: 1px solid var(--line); border-radius: 6px; }
+.language-select:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }

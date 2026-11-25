@@ -1,14 +1,9 @@
 # Public connection settings; no vault data belongs here.
-extends RefCounted
-
 static func load_settings() -> Dictionary, Err:
 	var path := "settings.local.json" if GD.file.exists("settings.local.json") else "settings.example.json"
-	var text, read_error := GD.file.load_text(path)
-	if read_error:
-		return {}, Err("Could not read settings file")
-	var value, parse_error := GD.data.json_to_var(text)
-	if parse_error or not value is Dictionary:
-		return {}, Err("Invalid settings file")
+	var value, err := GD.file.load_json(path)
+	if err or not value is Dictionary:
+		return {}, Err("Could not load settings file as a JSON object")
 	var port = value.get("port")
 	if not (port is int or port is float) or float(port) != floor(float(port)) or port < 1 or port > 65535:
 		return {}, Err("settings file port must be an integer from 1 to 65535")

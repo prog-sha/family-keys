@@ -171,8 +171,8 @@ try:
  check(request('GET','/api/status',headers={'Origin':'http://evil.invalid'})[0]==403,'cross-origin access is refused')
  check(payload('GET','/api/status',headers={'X-Forwarded-For':'192.0.2.20'})[1]['device']['ip']=='127.0.0.1','proxy headers do not impersonate a device')
  check(request('POST','/api/items',{}, {'X-Keys-CSRF':'wrong'})[0]==403,'web saves require a CSRF header')
- fixture='# 偽のテストデータ\r\nTOKEN="fixture-only-Ω"\r\nMULTILINE="first\nsecond"\r\n'
- status,item=payload('POST','/api/items',{'name':'Discord 通知','aliases':'開発用','note':'家族でディスコードの通知に使う。','env_base64':base64.b64encode(fixture.encode()).decode()})
+ fixture='# \u507d\u306e\u30c6\u30b9\u30c8\u30c7\u30fc\u30bf\r\nTOKEN="fixture-only-Ω"\r\nMULTILINE="first\nsecond"\r\n'
+ status,item=payload('POST','/api/items',{'name':'Discord \u901a\u77e5','aliases':'\u958b\u767a\u7528','note':'\u5bb6\u65cf\u3067\u30c7\u30a3\u30b9\u30b3\u30fc\u30c9\u306e\u901a\u77e5\u306b\u4f7f\u3046。','env_base64':base64.b64encode(fixture.encode()).decode()})
  check(status==200,'UTF-8 dotenv with CRLF can be registered')
  id=item['item']['id']
  edit_path='/api/items/'+id+'/reveal'
@@ -183,7 +183,7 @@ try:
  check(request('POST','/api/items',edit_data)[0]==400,'a stale editor cannot overwrite a later save')
  for fields in [[],[{'name':'','value':'ignored'}],[{'name':'BAD-NAME','value':''}],[{'name':'DUP','value':'a'},{'name':'DUP','value':'b'}]]:
   check(request('POST','/api/items',{'name':'Invalid ENV fixture','env_fields':fields})[0]==400,'structured editor rejects missing, invalid, and duplicate ENV names')
- fields=[{'name':'TEST_VALUE','value':'space " quote \\ slash \n 日本語'},{'name':'TEST_EMPTY','value':''}]
+ fields=[{'name':'TEST_VALUE','value':'space " quote \\ slash \n \u65e5\u672c\u8a9e'},{'name':'TEST_EMPTY','value':''}]
  status,structured=payload('POST','/api/items',{'name':'Structured ENV fixture','env_fields':fields})
  check(status==200 and [payload('POST','/api/items/'+row['id']+'/reveal',{'fields':True})[1]['fields'][0] for row in structured['items']]==fields,'structured ENV values round-trip through the generated dotenv')
  fields=[{'name':'WEB_BATCH_A','value':'fixture-web-a'},{'name':'WEB_BATCH_B','value':'fixture-web-b'}]
@@ -193,13 +193,13 @@ try:
  check(request('POST','/api/items',{'name':'Duplicate batch fixture','split_env':True,'env_fields':fields})[0]==400 and not rpc('search_env',{'query':'WEB_ROLLBACK'})['items'],'duplicate ENV rejects the entire batch')
  check(rpc_failed(rpc_response('begin_intake',{'title':'Duplicate MCP fixture','variable':'WEB_BATCH_A'})),'MCP intake rejects an existing ENV name')
  check('fixture-only' not in json.dumps(item),'save response contains metadata only')
- _,note=payload('POST','/api/items',{'name':'家族アカウント','owner':'Y','note':'パスワード fixture-note-password。サブアカウントの通知用。'})
+ _,note=payload('POST','/api/items',{'name':'\u5bb6\u65cf\u30a2\u30ab\u30a6\u30f3\u30c8','owner':'Y','note':'\u30d1\u30b9\u30ef\u30fc\u30c9 fixture-note-password。\u30b5\u30d6\u30a2\u30ab\u30a6\u30f3\u30c8\u306e\u901a\u77e5\u7528。'})
  check(note['item']['owner']=='ALL','all family entries are shared without individual restrictions')
  import urllib.parse
- found=payload('GET','/api/items?q='+urllib.parse.quote('通知'))[1]['items']
+ found=payload('GET','/api/items?q='+urllib.parse.quote('\u901a\u77e5'))[1]['items']
  check(len(found)==2,'SQLite searches full Japanese notes')
  check('fixture-note-password' not in json.dumps(found),'search metadata does not reveal private notes')
- check(rpc('search_env',{'query':'サブアカウント'})=={'items':[{'id':note['item']['id'],'name':'家族アカウント'}]},'MCP searches by private note without exposing it or returning empty fields')
+ check(rpc('search_env',{'query':'\u30b5\u30d6\u30a2\u30ab\u30a6\u30f3\u30c8'})=={'items':[{'id':note['item']['id'],'name':'\u5bb6\u65cf\u30a2\u30ab\u30a6\u30f3\u30c8'}]},'MCP searches by private note without exposing it or returning empty fields')
  status,revealed=payload('POST','/api/items/'+note['item']['id']+'/reveal',{})
  check(status==200 and 'fixture-note-password' in revealed['note'],'logged-in human can display a password')
  disk=(RUN/'keys.sqlite3').read_bytes()
@@ -222,16 +222,26 @@ try:
  check(revealed['note']=='Original fixture note' and revealed['env']==otp_input['env'] and seed not in json.dumps(revealed),'dedicated TOTP settings preserve existing credentials and notes')
  otp_id=otp_item['item']['id']
  otp_path='/api/items/'+otp_id+'/otp'
- def expected_codes():
+ def expected_codes(setup_seed=seed):
   codes=[]
   for step in range(int(time.time())//30-1,int(time.time())//30+2):
-   mac=hmac.new(base64.b32decode(seed),step.to_bytes(8,'big'),hashlib.sha1).digest(); offset=mac[-1]&15
+   mac=hmac.new(base64.b32decode(setup_seed),step.to_bytes(8,'big'),hashlib.sha1).digest(); offset=mac[-1]&15
    codes.append(f'{(int.from_bytes(mac[offset:offset+4],"big")&0x7fffffff)%1000000:06}')
   return codes
  _,shown=payload('POST',otp_path,{})
  check(shown['code'] in expected_codes() and 1<=shown['expires_in']<=30,'login UI receives a current standard TOTP and its expiry')
  otp_uri='otpauth://totp/Fixture%3ADemo?issuer=Fixture&secret='+seed
  check(request('POST',settings_path,{'variable':'TEST_PASSWORD','seed':otp_uri})[0]==200 and payload('POST',otp_path,{})[1]['code'] in expected_codes(),'pasteable otpauth URI sets the correct code')
+ replacement_seed=base64.b32encode(b'fixture-replacement!').decode()
+ replacement_uri='otpauth://totp/Fixture%3AReplacement?secret='+replacement_seed
+ status,settings_saved=payload('POST',settings_path,{'variable':'TEST_PASSWORD','seed':replacement_uri})
+ check(status==200 and payload('POST',otp_path,{})[1]['code'] in expected_codes(replacement_seed),'a new setup URI replaces the stored two-factor seed')
+ disclosures=[settings_saved,payload('POST','/api/items/'+otp_id+'/reveal',{'fields':True})[1],
+              payload('GET','/api/items')[1],rpc('search_env',{'query':'TEST_PASSWORD'}),payload('POST',otp_path,{})[1]]
+ check(all(secret not in json.dumps(disclosures) for secret in (otp_uri,replacement_uri,seed,replacement_seed)),
+       'two-factor setup material is write-only across browser and MCP responses')
+ check(request('GET',settings_path)[0] in (404,405),'two-factor setup has no read endpoint')
+ check(request('POST',settings_path,{'variable':'TEST_PASSWORD','seed':otp_uri})[0]==200,'the original test setup can be restored by replacement')
  for bad_uri in [otp_uri.replace('/totp/','/hotp/'),otp_uri+'&digits=8',otp_uri+'&secret='+seed]:
   check(request('POST',settings_path,{'variable':'TEST_PASSWORD','seed':bad_uri})[0]==400,'unsupported or ambiguous OTP URL is rejected')
  qr_fixtures=json.loads((ROOT/'tests/fixtures/totp-qr.json').read_text())
@@ -265,10 +275,10 @@ try:
  p=subprocess.run(['sh',str(ROOT/'append-env.sh'),rpc('prepare_env',{'id':otp_id})['url'],str(RUN/'.env.otp')],env=dict(os.environ,K=key),cwd=RUN,text=True,capture_output=True,timeout=10)
  check(p.returncode==0 and (RUN/'.env.otp').read_text()=='\nTEST_PASSWORD=fixture-password\n','normal dotenv delivery excludes the TOTP seed and code')
  check(request('POST','/api/items',dict(otp_input,id=otp_id,otp={'variable':'TEST_PASSWORD','seed':''}))[0]==200 and payload('POST',otp_path,{})[1]['code'] in expected_codes(),'editing with a blank seed preserves the registered TOTP')
- skill={'name':'deploy-fixture','summary':'公開前の確認','body':'# Deploy\nCheck the target first.'}
+ skill={'name':'deploy-fixture','summary':'\u516c\u958b\u524d\u306e\u78ba\u8a8d','body':'# Deploy\nCheck the target first.'}
  check(request('POST','/api/skills',skill,{'Cookie':''})[0]==401 and request('POST','/api/skills',dict(skill,name='../bad'))[0]==400,'skill writes require login and a valid name')
  check(request('POST','/api/skills',skill)[0]==200 and rpc('family_skills')=={'names':['deploy-fixture']},'family skills list returns names only')
- check(rpc('family_skills',{'query':'公開'})=={'items':[{'name':skill['name'],'summary':skill['summary']}]},'family skills search returns a summary without the body')
+ check(rpc('family_skills',{'query':'\u516c\u958b'})=={'items':[{'name':skill['name'],'summary':skill['summary']}]},'family skills search returns a summary without the body')
  skill_url=rpc('family_skills',{'name':skill['name']})['url']
  check(request('GET',urlsplit(skill_url).path,headers={'Cookie':''})[1].decode()==skill['body'],'exact skill selection reads one body through its URL')
  check(request('DELETE','/api/skills/deploy-fixture')[0]==200 and rpc('family_skills')=={'names':[]},'deleting a skill removes it from discovery')
@@ -304,18 +314,18 @@ try:
  curl.write_text('#!/bin/sh\ntee "$KEYS_TEST_CAPTURE" | '+shlex.quote(shutil.which('curl'))+' "$@"\n')
  curl.chmod(0o700)
  cli_env=dict(env,KEYS_TEST_CAPTURE=str(capture),PATH=str(bin_dir)+os.pathsep+env['PATH'])
- command=['sh',str(cli),f'http://localhost:{port}',str(cli_source),'CLI_TOKEN','CLI登録','用途は自動化の認証']
+ command=['sh',str(cli),f'http://localhost:{port}',str(cli_source),'CLI_TOKEN','CLI\u767b\u9332','\u7528\u9014\u306f\u81ea\u52d5\u5316\u306e\u8a8d\u8a3c']
  p=subprocess.run(command,env=cli_env,cwd=RUN,text=True,capture_output=True,timeout=10)
  check(p.returncode==0 and p.stdout.strip()=='OK' and 'fixture-' not in p.stdout+p.stderr,'packaged CLI registers the named variable without opening a browser or exposing values')
  message=json.loads(capture.read_text())
  check('fixture-' not in capture.read_text() and set(message)=={'title','purpose','variable','nonce','iv','cipher','mac'},'CLI sends ciphertext and searchable metadata only')
- result=rpc('search_env',{'query':'自動化の認証'})['items']
+ result=rpc('search_env',{'query':'\u81ea\u52d5\u5316\u306e\u8a8d\u8a3c'})['items']
  check(len(result)==1 and result[0]['variables']==['CLI_TOKEN'],'CLI registration is searchable by purpose and keeps only the selected variable')
  encrypted=rpc('prepare_env',{'id':result[0]['id']})['url']
  cli_received=RUN/'.env.registration-result'
  p=append(encrypted,cli_received,key)
  check(p.returncode==0 and cli_received.read_text()=='\nCLI_TOKEN= "fixture-registered-Ω"\n','CLI registration preserves the selected dotenv assignment including quoting')
- check(request('POST','/agent/register',message)[0]==200 and rpc('search_env',{'query':'自動化の認証'})['items']==result,'replaying the same encrypted upload does not create a duplicate')
+ check(request('POST','/agent/register',message)[0]==200 and rpc('search_env',{'query':'\u81ea\u52d5\u5316\u306e\u8a8d\u8a3c'})['items']==result,'replaying the same encrypted upload does not create a duplicate')
  check(request('GET','/intake/cli-'+message['nonce']+'/info')[0]==404,'CLI registrations cannot be submitted through the browser intake route')
  tampered=dict(message,variable='DIFFERENT_TOKEN')
  check(request('POST','/agent/register',tampered)[0]==403,'CLI authenticates the upload metadata')
@@ -396,7 +406,7 @@ try:
  check(request('POST','/agent/register',initial_upload)[0]==200 and rpc('search_env',{'query':'INITIAL_TOTP'})['items'][0].get('has_totp') is True,'initial registration stores TOTP and accepts encrypted retries')
  cli_source.write_text('CLI_TOKEN=fixture-first\nCLI_TOKEN=fixture-second\n')
  p=subprocess.run(command,env=cli_env,cwd=RUN,text=True,capture_output=True,timeout=10)
- check(p.returncode!=0 and 'fixture-' not in p.stdout+p.stderr and rpc('search_env',{'query':'自動化の認証'})['items']==result,'ambiguous dotenv values are rejected locally')
+ check(p.returncode!=0 and 'fixture-' not in p.stdout+p.stderr and rpc('search_env',{'query':'\u81ea\u52d5\u5316\u306e\u8a8d\u8a3c'})['items']==result,'ambiguous dotenv values are rejected locally')
  encrypted=request('GET','/agent/env/'+id)[1]
  before=target.read_bytes();p=append(url,target,'wrong-family-secret')
  check(p.returncode!=0 and target.read_bytes()==before,'wrong secret cannot modify the existing dotenv')
@@ -413,7 +423,7 @@ try:
  p=append('http://127.0.0.1:'+str(bad.server_port),target,key)
  bad.shutdown();thread.join();bad.server_close()
  check(p.returncode!=0 and target.read_bytes()==before,'modified ciphertext is rejected without touching dotenv')
- ticket=rpc('begin_intake',{'title':'入力してOK','purpose':'テスト用途','variable':'PASTE_KEY'})
+ ticket=rpc('begin_intake',{'title':'\u5165\u529b\u3057\u3066OK','purpose':'\u30c6\u30b9\u30c8\u7528\u9014','variable':'PASTE_KEY'})
  missing_env=payload('POST','/mcp',{'jsonrpc':'2.0','id':1,'method':'tools/call','params':{'name':'begin_intake','arguments':{'title':'Invalid fixture'}}})[1]
  check(rpc_failed(missing_env),'MCP requires an explicit ENV name for registration')
  check(rpc_failed(rpc_response('begin_intake',{'title':'Invalid fixture','variable':'UNREGISTERED','otpauth':otp_uri})),'MCP initial setup only takes metadata')
@@ -440,7 +450,7 @@ try:
  timer=threading.Timer(.2,person);timer.start();receipt=rpc('wait_intake',{'id':tid});timer.join()
  check(rpc('search_env',{'query':'PASTE_KEY'})['items'][0].get('has_totp') is True,'one-time single item form supports TOTP on first save')
  check(posted==[200] and receipt['status']=='ok','human OK completes a direct HTTP MCP wait')
- check(rpc('search_env',{'query':'テスト用途'})=={'items':[{'id':receipt['item_id'],'name':'入力してOK','variables':['PASTE_KEY'],'has_totp':True}]},'a fresh MCP connection finds the registered key by purpose alone')
+ check(rpc('search_env',{'query':'\u30c6\u30b9\u30c8\u7528\u9014'})=={'items':[{'id':receipt['item_id'],'name':'\u5165\u529b\u3057\u3066OK','variables':['PASTE_KEY'],'has_totp':True}]},'a fresh MCP connection finds the registered key by purpose alone')
  check('fixture-pasted' not in json.dumps(receipt) and key not in json.dumps(receipt),'completion contains neither token nor shared secret')
  check(payload('POST','/intake/'+tid,{'value':'fixture-again'},{'Cookie':'','X-Intake-CSRF':info['csrf']})[0]==409,'input transaction cannot be submitted twice')
  delivery=rpc('prepare_env',{'id':receipt['item_id']});out=RUN/'.env.paste';p=append(delivery['url'],out,key)
@@ -455,22 +465,22 @@ try:
  alias=payload('POST','/mcp',msg,{'Host':f'127.0.0.1:{port}'})[1]['result']
  check(alias['structuredContent']['url'].startswith(f'http://127.0.0.1:{port}/') and json.loads(alias['content'][0]['text'])==alias['structuredContent'],'URLs preserve the validated request alias in native MCP results')
  for index in range(13):
-  status, _=payload('POST','/api/items',{'name':f'Bulk fixture {index}','note':'上限チェック'})
+  status, _=payload('POST','/api/items',{'name':f'Bulk fixture {index}','note':'\u4e0a\u9650\u30c1\u30a7\u30c3\u30af'})
   assert status==200
- limited=rpc('search_env',{'query':'上限チェック'})
+ limited=rpc('search_env',{'query':'\u4e0a\u9650\u30c1\u30a7\u30c3\u30af'})
  check(len(limited['items'])==12 and limited['more'] is True,'broad MCP search caps output and signals more results')
  check(payload('POST','/api/logout',{})[0]==200,'human can log out')
  check(request('GET','/api/family-rule')[0]==401,'family rule is hidden again after logout')
  server.terminate();stdout,stderr=server.communicate(timeout=5);server=None
  legacy=RUN/'legacy.gd'
- legacy.write_text('''const Core = preload("../../core.gd")
+ legacy.write_text('''@import "../../core"
 func main(args) -> int:
-	var vault := Core.new()
+	var vault := core.new()
 	vault.open(args[0])!
 	var row := vault.find(args[1])
 	row.id = "legacy-collision"
-	row.mac = GD.data.raw_to_base64(vault.signature(row))
-	vault.db.exec("INSERT INTO items(id,record) VALUES(?,?)", [row.id, GD.data.var_to_json(row)!])!
+	row.mac = GD.data.to_base64(vault.signature(row))
+	vault.db.exec("INSERT INTO items(id,record) VALUES(?,?)", [row.id, GD.data.to_json(row)!])!
 	return 0
 ''')
  fixture_id=changed[0]['id']
@@ -484,8 +494,8 @@ func main(args) -> int:
  check(subprocess.run(['sh',str(cli),'--delete',duplicate_url,'BATCH_ONE'],env=cli_env,cwd=RUN,capture_output=True,timeout=10).returncode==0 and 'url' in rpc('prepare_env',{'vars':['BATCH_ONE']}),'resolving a legacy collision restores exact ENV lookup')
  server.terminate();more_out,more_err=server.communicate(timeout=5);server=None
  stdout+=more_out;stderr+=more_err
- check(b'fixture-' not in stdout+stderr,'server logs contain no fake secret values')
- check('fixture-' not in (RUN/'audit.jsonl').read_text(),'audit log omits value contents')
+ check(b'fixture-' not in stdout+stderr and all(value.encode() not in stdout+stderr for value in (seed,replacement_seed)), 'server logs contain no fake secret values or setup seeds')
+ check(all(value not in (RUN/'audit.jsonl').read_text() for value in ('fixture-',seed,replacement_seed)), 'audit log omits value contents and setup seeds')
  with sqlite3.connect(RUN/'keys.sqlite3') as c:
   ident,record=c.execute('SELECT id,record FROM items LIMIT 1').fetchone();row=json.loads(record);row['name']='tampered';c.execute('UPDATE items SET record=? WHERE id=?',(json.dumps(row),ident))
  p=subprocess.run([str(GD),'serve','server.gd',str(RUN)],cwd=ROOT,capture_output=True,timeout=5)

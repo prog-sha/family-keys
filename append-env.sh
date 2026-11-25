@@ -19,7 +19,7 @@ fi
 read_key() { sed -n 's/^FAMILY_KEYS_K=//p' "$1" 2>/dev/null | tr -d '\r' | tail -n 1; }
 K=${K:-${FAMILY_KEYS_K:-$(read_key "$key_source")}}
 K=${K:-$(read_key "${FAMILY_KEYS_KEY_FILE:-$HOME/.config/family-keys/key.env}")}
-: "${K:? family-keysの共通キーを設定してください}"
+: "${K:? Set the Family Keys shared key.}"
 t=$(mktemp -d)
 trap 'rm -rf "$t"' EXIT
 if [ "$mode" = invite ]; then

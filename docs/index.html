@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Family Keys is a LAN credential vault with encrypted delivery for MCP clients.">
+  <title>Family Keys — Your home-network vault</title>
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="alternate" hreflang="ja" href="./ja/">
+</head>
+<body>
+  <header><div class="wrap top">
+    <a class="brand" href="./"><span class="mark" aria-hidden="true">⌘</span> keys.</a>
+    <div class="links">
+      <a href="https://github.com/prog-sha/family-keys">GitHub</a>
+      <nav class="site-languages" aria-label="Language"><a href="./" lang="en" aria-current="page">EN</a><a href="./ja/" lang="ja" hreflang="ja" aria-label="Japanese">JA</a></nav>
+    </div>
+  </div></header>
+  <main class="wrap">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Family Keys</p>
+        <h1>Your home-network vault</h1>
+        <p class="lead">Keep credentials on your network. Let your agent find the right key and deliver it directly to your project.</p>
+        <div class="actions">
+          <a class="primary" href="https://github.com/prog-sha/family-keys#run-locally">Set up Family Keys</a>
+          <a href="#workflow">How it works</a>
+        </div>
+      </div>
+      <figure class="panel">
+        <div class="vault-top"><span><span aria-hidden="true">⌘</span> Vault</span><span class="badge">Family LAN</span></div>
+        <div class="search">⌕ &nbsp; Search by purpose</div>
+        <div class="mock-item"><div><strong>Discord bot</strong><code>DISCORD_BOT_TOKEN</code></div><span>Shared</span></div>
+        <div class="mock-item"><div><strong>Build storage</strong><code>STORAGE_ACCESS_KEY</code></div><span>Shared</span></div>
+        <div class="mock-item"><div><strong>Dashboard sign-in</strong><code>DASHBOARD_PASSWORD</code></div><span>Two-factor</span></div>
+        <figcaption>Example vault with sample entries.</figcaption>
+      </figure>
+    </section>
+    <section class="section" id="workflow">
+      <h2>How it works</h2>
+      <ol class="workflow">
+        <li><h3>Register</h3><p>Save a credential with an ENV name and a purpose. Add two-factor setup to the same item if needed.</p></li>
+        <li><h3>Find</h3><p>Connect your agent through MCP. It searches names and purposes and receives metadata.</p></li>
+        <li><h3>Deliver</h3><p>Fetch the values in an authenticated, encrypted payload. Append them to a local .env or pass them to a local command.</p></li>
+      </ol>
+    </section>
+    <section class="section local-note">
+      <h2>Run it on a trusted LAN</h2>
+      <p>Start on localhost and allow only the devices you need. Two-factor setup details are write-only and can be replaced from the vault.</p>
+      <a href="https://github.com/prog-sha/family-keys#secure-lan-operation">Read the LAN security guide</a>
+    </section>
+  </main>
+  <footer><div class="wrap">Family Keys · <a href="https://github.com/prog-sha/family-keys">Source on GitHub</a></div></footer>
+</body>
+</html>

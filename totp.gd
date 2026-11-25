@@ -1,5 +1,3 @@
-extends RefCounted
-
 # RFC 6238 defaults used by authenticator apps: Base32, SHA-1, 6 digits, 30 seconds.
 static func decode(input: String) -> PackedByteArray:
 	var value := input.strip_edges()
@@ -54,8 +52,8 @@ static func code(secret: PackedByteArray, unix_time: int) -> String:
 	var counter := int(unix_time / 30.0)
 	for i in 8:
 		message[7 - i] = (counter >> (i * 8)) & 255
-	var mac := Crypto.new().hmac_digest(HashingContext.HASH_SHA1, secret, message)
-	if mac.size() != 20:
+	var mac, err := GD.data.hmac("sha1", secret, message)
+	if err:
 		return ""
 	var offset := mac[-1] & 15
 	var value := ((mac[offset] & 127) << 24) | (mac[offset + 1] << 16) | (mac[offset + 2] << 8) | mac[offset + 3]

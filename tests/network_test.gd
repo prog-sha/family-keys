@@ -1,5 +1,5 @@
 # Check exact IPv4 subnet boundaries and reject lookalike addresses.
-const Server = preload("../server.gd")
+@import "../server" as Server
 func main() -> int:
 	var server := Server.new()
 	for address in ["192.0.2.1", "192.0.2.132", "192.0.2.254"]:

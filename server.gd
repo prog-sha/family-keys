@@ -1,18 +1,21 @@
 # Serve the family key UI, authenticated dotenv downloads, and metadata-only HTTP MCP.
-class_name FamilyKeysServer
+@import "./auth" as Auth
+@import "./core"
+@import "./delivery" as Delivery
+@import "./qr_reader"
+@import "./totp"
 
-const Core = preload("core.gd")
-var vault := Core.new()
+var vault := core.new()
 var app := GD.web.app()
-var mcp_server := GD.ai.mcp.server("family-keys", {"version": "0.1.0"}) # Shared HTTP tool registry.
+var mcp_server := GD.ai.mcp.server("family-keys", {"version": "0.1.0", "reject_unknown": true}) # Shared HTTP tool registry.
 var cfg: Dictionary
 var root: String
 var writing := false
-var auth := preload("auth.gd").new()
-var delivery := preload("delivery.gd").new()
+var auth := Auth.new()
+var delivery := Delivery.new()
 const INVITE_LIFETIME_MS := 24 * 60 * 60 * 1000
 var family_invites: Dictionary = {}
-const SETUP_GUIDE := "このPCで家族LANのfamily-keysを使えるようにして。\n1. MCP「family-keys」を {{MCP_URL}} で登録。\n2. {{SKILL_URL}} の family-keys をスキル置き場に入れる。\n3. 同梱の scripts/setup-key.sh を sh で実行。引数は '{{INVITE_URL}}'。\n取得と二段階認証は同梱スキルに従う。"
+const SETUP_GUIDE := "Set up Family Keys for this computer.\n1. Register the family-keys MCP at {{MCP_URL}}.\n2. Download the skill from {{SKILL_URL}} and install it in your agent’s skills directory.\n3. Run scripts/setup-key.sh with sh and the argument '{{INVITE_URL}}'.\nUse the skill for key delivery and two-factor codes."
 var distribution: Dictionary
 var family_skill_zip: PackedByteArray
 const MAX_BATCH := 32
@@ -58,7 +61,7 @@ func guard(req: GDWebRequest) -> Variant:
 	if device.is_empty():
 		for pattern in cfg.get("allowed_networks", []):
 			if address_allowed(ip, str(pattern)):
-				device = {"ip": ip, "name": "家族のLAN"}
+				device = {"ip": ip, "name": "Family LAN"}
 				break
 	if device.is_empty():
 		return fail("This IP is not registered", 403)
@@ -76,7 +79,7 @@ func guard(req: GDWebRequest) -> Variant:
 	req.set_value("session", session)
 	if req.path.begins_with("/api/") and req.path not in ["/api/status", "/api/login"]:
 		if session.is_empty():
-			return fail("ログインしてください", 401)
+			return fail("Sign in to continue.", 401)
 		if req.method not in ["GET", "HEAD", "OPTIONS"] and req.get_header("X-Keys-CSRF") != session.csrf:
 			return fail("Reload the page before saving", 403)
 	if req.method == "POST" and not req.get_header("Content-Type").begins_with("application/json"):
@@ -85,7 +88,7 @@ func guard(req: GDWebRequest) -> Variant:
 	device["member"] = "ALL"
 	device["manage"] = true
 	req.set_value("device", device)
-	req.set_body_limit(Core.MAX_ENV * 6)
+	req.set_body_limit(core.MAX_ENV * 6)
 	return null
 
 func headers(_req: GDWebRequest, res: GDWebResponse) -> GDWebResponse:
@@ -102,7 +105,7 @@ func asset(req: GDWebRequest) -> GDWebResponse:
 	var name: String = req.get_param("name")
 	if name == "family-keys-skill.zip":
 		return family_skill_download(req)
-	if name not in ["app.js", "style.css", "intake.js", "append-env.sh"]:
+	if name not in ["app.js", "style.css", "intake.js", "locale.js", "ja.json", "append-env.sh"]:
 		return fail("Not found", 404)
 	return GD.web.file("append-env.sh" if name == "append-env.sh" else "web/" + name)!
 
@@ -136,22 +139,22 @@ func save(req: GDWebRequest) -> GDWebResponse:
 func save_web_batch(req: GDWebRequest, data: Dictionary) -> GDWebResponse:
 	var fields = data.get("env_fields")
 	if data.has("id") or data.has("env") or data.has("env_base64") or not fields is Array or fields.is_empty() or fields.size() > MAX_BATCH:
-		return fail("新規登録するENVを1〜32件指定してください")
+		return fail("Specify 1 to 32 new ENV variables.")
 	var names := {}
 	var inputs: Array = []
 	var otp = data.get("otp", {})
 	if not otp is Dictionary:
-		return fail("認証コードの設定を確認してください")
+		return fail("Check the two-factor settings.")
 	for field in fields:
 		if not field is Dictionary or not valid_env_name(field.get("name")) or names.has(field.name):
-			return fail("重複しないENV名を指定してください")
+			return fail("Use unique ENV names.")
 		names[field.name] = true
 		var input := {"name": data.get("name", ""), "note": data.get("note", ""), "aliases": data.get("aliases", ""), "env_fields": [field]}
 		if otp.get("variable") == field.name:
 			input["otp"] = otp
 		inputs.append(input)
 	if not otp.is_empty() and not names.has(otp.get("variable")):
-		return fail("認証コードに紐づくENV名を指定してください")
+		return fail("Specify the ENV name for two-factor authentication.")
 	writing = true
 	var items, err := vault.put_many(inputs)
 	writing = false
@@ -206,21 +209,21 @@ func save_devices(req: GDWebRequest) -> GDWebResponse:
 		return fail("Invalid devices")
 	var input_networks = data.get("allowed_networks", cfg.get("allowed_networks", []))
 	if not input_networks is Array:
-		return fail("許可範囲を1行ずつ入力してください")
+		return fail("Enter one allowed network per line.")
 	if input_networks.size() > 256 or data.devices.size() > 256:
-		return fail("許可範囲と固定IPはそれぞれ256件までです")
+		return fail("You can enter up to 256 networks and 256 fixed IPs.")
 	var networks: Array = []
 	var range_format := RegEx.new()
 	range_format.compile("\\A(?:[0-9]{1,3}\\.){3}[0-9]{1,3}/(?:[1-9]|[12][0-9]|3[0-2])\\z")
 	for i in input_networks.size():
 		var entry = input_networks[i]
 		if not entry is String or entry.length() > 64:
-			return fail("許可範囲の %d 行目を確認してください" % (i + 1))
+			return fail("Check line %d of the allowed networks." % (i + 1))
 		var network := str(entry).strip_edges()
 		if network.ends_with(".*"):
 			network = network.trim_suffix("*") + "0/24"
 		if not range_format.search(network) or not valid_fixed_ip(network.get_slice("/", 0)):
-			return fail("許可範囲の %d 行目は 192.0.2.0/24 の形式で入力してください" % (i + 1))
+			return fail("Use CIDR notation like 192.0.2.0/24 on line %d." % (i + 1))
 		if network not in networks:
 			networks.append(network)
 	var ips: Array = []
@@ -232,17 +235,17 @@ func save_devices(req: GDWebRequest) -> GDWebResponse:
 	for i in data.devices.size():
 		var d = data.devices[i]
 		if not d is Dictionary or not d.get("ip") is String or not valid_fixed_ip(d.ip) or d.ip in ips or not d.get("name", "") is String or str(d.get("name", "")).length() > 128:
-			return fail("固定IPの %d 行目を確認してください。例：192.0.2.10 または ::1" % (i + 1))
+			return fail("Check line %d of the fixed IPs. Examples: 192.0.2.10 or ::1." % (i + 1))
 		ips.append(d.ip)
 		updated.append({"ip": d.ip, "name": d.get("name", "")})
 		if d.ip == req.get_value("device").ip:
 			keep_self = true
 	if not keep_self:
-		return fail("この端末のIPが許可範囲か固定IPに含まれるようにしてください")
+		return fail("Keep this device’s IP in an allowed network or the fixed IP list.")
 	var next := cfg.duplicate(true)
 	next.devices = updated
 	next.allowed_networks = networks
-	var save_err := Core.private_write(root.path_join("config.json"), GD.data.var_to_json(next)!.to_utf8_buffer())
+	var save_err := core.private_write(root.path_join("config.json"), GD.data.to_json(next)!.to_utf8_buffer())
 	if save_err:
 		return fail("Could not save devices", 500)
 	cfg = next
@@ -256,7 +259,7 @@ func reveal(req: GDWebRequest) -> GDWebResponse:
 	var body, err := vault.unpack(row)
 	if err:
 		return fail("Item could not be opened", 500)
-	var bytes := GD.data.base64_to_raw(body.env_base64)!
+	var bytes := GD.data.from_base64(body.env_base64)!
 	audit(req, "reveal", row.id)
 	var env := bytes.get_string_from_utf8()
 	var result := {"item": vault.metadata(row), "note": body.note, "env": env}
@@ -264,9 +267,9 @@ func reveal(req: GDWebRequest) -> GDWebResponse:
 	if not options_err and options is Dictionary and options.get("fields") == true:
 		var fields: Array = []
 		if not bytes.is_empty():
-			var values, err := GD.data.dotenv_to_dict(env)
+			var values, err := GD.data.from_dotenv(env)
 			if err:
-				return fail("ENVを読み込めませんでした", 500)
+				return fail("Could not load the ENV variables.", 500)
 			for variable in values:
 				fields.append({"name": variable, "value": values[variable]})
 		result["fields"] = fields
@@ -278,23 +281,23 @@ func family_rule(_req: GDWebRequest) -> GDWebResponse:
 func otp_response(req: GDWebRequest, encrypted: bool) -> GDWebResponse:
 	var row := vault.find(req.get_param("id"))
 	if not row.has("otp_variable"):
-		return fail("認証コードが未設定です", 404)
+		return fail("Two-factor authentication is not configured.", 404)
 	var body, err := vault.unpack(row)
 	if err:
-		return fail("認証コードを生成できません", 500)
+		return fail("Could not generate a two-factor code.", 500)
 	var now := int(Time.get_unix_time_from_system())
 	var code := generate_otp(body, now)
 	if code.is_empty():
-		return fail("認証コードを生成できません", 500)
+		return fail("Could not generate a two-factor code.", 500)
 	audit(req, "otp", row.id)
 	if encrypted:
 		var sealed, seal_err := delivery.seal(code.to_utf8_buffer())
-		return fail("認証コードを配信できません", 500) if seal_err else GD.web.text(sealed)
+		return fail("Could not deliver the two-factor code.", 500) if seal_err else GD.web.text(sealed)
 	return reply({"code": code, "expires_in": 30 - now % 30})
 
 func generate_otp(body: Dictionary, now: int) -> String:
-	var seed, err := GD.data.base64_to_raw(body.get("otp", {}).get("seed", ""))
-	return "" if err or seed.is_empty() else preload("totp.gd").code(seed, now)
+	var seed, err := GD.data.from_base64(body.get("otp", {}).get("seed", ""))
+	return "" if err or seed.is_empty() else totp.code(seed, now)
 
 func valid_env_name(value: Variant) -> bool:
 	if not value is String or value.length() > 256 or value == "FAMILY_KEYS_K":
@@ -338,7 +341,7 @@ func prepare_change(args: Dictionary) -> String, Err:
 		return "", Err("Specify ENV name and update, delete, or totp")
 	if args.has("title") and (action != "update" or not args.title is String or args.title.strip_edges().is_empty() or args.title.length() > 160):
 		return "", Err("Invalid title")
-	if args.has("purpose") and (action != "update" or not args.purpose is String or args.purpose.to_utf8_buffer().size() > Core.MAX_ENV):
+	if args.has("purpose") and (action != "update" or not args.purpose is String or args.purpose.to_utf8_buffer().size() > core.MAX_ENV):
 		return "", Err("Invalid purpose")
 	var item_id, err := resolve_env(variable, selected_id)
 	if err:
@@ -362,9 +365,9 @@ func apply_change(req: GDWebRequest) -> GDWebResponse:
 		return fail("Invalid change")
 	var args: Dictionary = ticket.args
 	var signed := "FK1-MANAGE:%s:%s:%s:%s" % [token, args.action, args.name, data.get("mac", "")]
-	var key := GD.data.sha256(("FK1-MANAGE-KEY:" + token + ":" + delivery.secret).to_utf8_buffer())
-	var proof := GD.data.hmac_sha256(key, signed.to_utf8_buffer()).hex_encode()
-	if not Crypto.new().constant_time_compare(proof.to_utf8_buffer(), req.get_header("X-Keys-Manage-Proof").to_utf8_buffer()):
+	var key := GD.data.sha256("FK1-MANAGE-KEY:" + token + ":" + delivery.secret)
+	var proof := GD.data.hmac_sha256(key, signed).hex_encode()
+	if not GD.data.equal(proof, req.get_header("X-Keys-Manage-Proof")):
 		return fail("Authentication failed", 403)
 	var row := vault.find(ticket.id)
 	if row.is_empty() or row.revision != ticket.revision:
@@ -387,8 +390,8 @@ func apply_change(req: GDWebRequest) -> GDWebResponse:
 				return fail("TOTP ENV name mismatch", 409)
 			input["otp"] = {"variable": variable, "seed": setup.seed}
 		elif deleting or not data.is_empty():
-			var original := GD.data.base64_to_raw(body.env_base64)!
-			var values := GD.data.dotenv_to_dict(original.get_string_from_utf8())!
+			var original := GD.data.from_base64(body.env_base64)!
+			var values := GD.data.from_dotenv(original.get_string_from_utf8())!
 			if deleting:
 				values.erase(variable)
 				if row.get("otp_variable") == variable:
@@ -399,9 +402,9 @@ func apply_change(req: GDWebRequest) -> GDWebResponse:
 					return fail(replacement.error, replacement.status)
 				if replacement.has("seed") or replacement.variable != variable:
 					return fail("ENV name mismatch")
-				var incoming := GD.data.dotenv_to_dict(replacement.env)!
+				var incoming := GD.data.from_dotenv(replacement.env)!
 				values[variable] = incoming[variable]
-			var updated, env_err := GD.data.dict_to_dotenv(values)
+			var updated, env_err := GD.data.to_dotenv(values)
 			if env_err:
 				return fail("Invalid dotenv")
 			input.erase("env_base64")
@@ -419,40 +422,40 @@ func apply_change(req: GDWebRequest) -> GDWebResponse:
 func batch_download(req: GDWebRequest) -> GDWebResponse:
 	var batch: Dictionary = prepared_batches.get(req.get_param("id"), {})
 	if batch.is_empty() or batch.until <= Time.get_ticks_msec():
-		return fail("取得URLの有効期限が切れました", 404)
+		return fail("The download link expired.", 404)
 	var values := {}
 	var otps := {}
 	var now := int(Time.get_unix_time_from_system())
 	for selection in batch.entries:
 		var row := vault.find(selection.id)
 		if row.is_empty() or selection.name not in row.variables:
-			return fail("ENVが変更されました。もう一度取得してください", 409)
+			return fail("The ENV changed. Request a new download.", 409)
 		var body, body_err := vault.unpack(row)
 		if body_err:
-			return fail("ENVを開けません", 500)
-		var bytes, decode_err := GD.data.base64_to_raw(body.env_base64)
+			return fail("Could not open the ENV.", 500)
+		var bytes, decode_err := GD.data.from_base64(body.env_base64)
 		if decode_err:
-			return fail("ENVを開けません", 500)
-		var parsed, parse_err := GD.data.dotenv_to_dict(bytes.get_string_from_utf8())
+			return fail("Could not open the ENV.", 500)
+		var parsed, parse_err := GD.data.from_dotenv(bytes.get_string_from_utf8())
 		if parse_err or not parsed.has(selection.name):
-			return fail("ENVを読み取れません", 500)
+			return fail("Could not read the ENV.", 500)
 		values[selection.name] = parsed[selection.name]
 		if row.get("otp_variable") == selection.name:
 			var code := generate_otp(body, now)
 			if code.is_empty():
-				return fail("認証コードを生成できません", 500)
+				return fail("Could not generate a two-factor code.", 500)
 			otps[selection.name] = code
-	var env, env_err := GD.data.dict_to_dotenv(values)
-	if env_err or env.to_utf8_buffer().size() > Core.MAX_ENV:
-		return fail("取得するENVを減らしてください", 413)
+	var env, env_err := GD.data.to_dotenv(values)
+	if env_err or env.to_utf8_buffer().size() > core.MAX_ENV:
+		return fail("Request fewer ENV variables.", 413)
 	var envelope: String
 	if req.get_header("X-Keys-Bundle") == "json":
-		envelope = GD.data.var_to_json({"env": env, "totp": otps})!
+		envelope = GD.data.to_json({"env": env, "totp": otps})!
 	else:
-		envelope = "FK1-BATCH\n" + GD.data.raw_to_base64(env.to_utf8_buffer()) + "\n" + GD.data.var_to_json(otps)! + "\n"
+		envelope = "FK1-BATCH\n" + GD.data.to_base64(env) + "\n" + GD.data.to_json(otps)! + "\n"
 	var sealed, err := delivery.seal(envelope.to_utf8_buffer())
 	if err:
-		return fail("ENVを配信できません", 500)
+		return fail("Could not deliver the ENV.", 500)
 	for selection in batch.entries:
 		audit(req, "batch_download", selection.id)
 	return GD.web.text(sealed)
@@ -460,29 +463,29 @@ func batch_download(req: GDWebRequest) -> GDWebResponse:
 func save_otp_settings(req: GDWebRequest) -> GDWebResponse:
 	var data, parse_err := req.read_json()
 	if parse_err or not data is Dictionary or data.is_empty():
-		return fail("認証コードの設定を確認してください")
+		return fail("Check the two-factor settings.")
 	if writing:
-		return fail("保存中です。もう一度お試しください", 409)
+		return fail("A save is in progress. Try again.", 409)
 	var row := vault.find(req.get_param("id"))
 	if row.is_empty():
-		return fail("項目が見つかりません", 404)
+		return fail("Item not found.", 404)
 	if data.has("qr"):
 		var qr = data.qr
 		if not qr is Dictionary or not qr.get("gray") is String or qr.gray.length() > 2613336:
-			return fail("QR画像の形式を確認してください")
+			return fail("Check the QR image format.")
 		for value in [qr.get("width"), qr.get("height")]:
 			if not (value is int or value is float) or value < 21 or value > 1400 or value != floor(value):
-				return fail("QR画像のサイズを確認してください")
-		var gray, qr_err := GD.data.base64_to_raw(qr.gray)
+				return fail("Check the QR image dimensions.")
+		var gray, qr_err := GD.data.from_base64(qr.gray)
 		if qr_err or gray.size() != int(qr.width) * int(qr.height):
-			return fail("QR画像の形式を確認してください")
-		var uri := preload("qr_reader.gd").new().read(gray, int(qr.width), int(qr.height))
-		if preload("totp.gd").uri_seed(uri).is_empty():
-			return fail("対応するTOTPのQRが見つかりません。QRの周囲を切り取って貼り付けてください")
+			return fail("Check the QR image format.")
+		var uri := qr_reader.new().read(gray, int(qr.width), int(qr.height))
+		if totp.uri_seed(uri).is_empty():
+			return fail("No supported TOTP QR code was found. Crop around the code and try again.")
 		data = {"variable": data.get("variable"), "seed": uri}
 	var body, read_err := vault.unpack(row)
 	if read_err:
-		return fail("項目を開けません", 500)
+		return fail("Could not open the item.", 500)
 	writing = true
 	var item, save_err := vault.put({"id": row.id, "name": row.name, "aliases": row.aliases, "note": body.note, "env_base64": body.env_base64, "otp": data})
 	writing = false
@@ -499,24 +502,24 @@ func skill_list(query: String) -> Array:
 func skill_read(req: GDWebRequest, editor: bool) -> GDWebResponse:
 	var row, err := vault.db.query_row("SELECT name,summary,body FROM family_skills WHERE name=?", [req.get_param("name")])
 	if err or row.is_empty():
-		return fail("スキルが見つかりません", 404)
+		return fail("Skill not found.", 404)
 	return reply(row) if editor else GD.web.text(row.body)
 
 func skill_save(req: GDWebRequest) -> GDWebResponse:
 	var data, err := req.read_json()
 	if err or not data is Dictionary or not data.get("name") is String or not data.get("summary") is String or not data.get("body") is String:
-		return fail("名前・概要・本文を入力してください")
+		return fail("Enter a name, summary, and body.")
 	var slug := RegEx.new()
 	slug.compile("\\A[a-z0-9][a-z0-9-]{0,63}\\z")
 	var summary: String = data.summary.strip_edges()
 	if not slug.search(data.name) or summary.is_empty() or summary.length() > 160 or summary.contains("\n") or summary.contains("\r") or data.body.strip_edges().is_empty() or data.body.to_utf8_buffer().size() > 65536:
-		return fail("名前は半角小文字・数字・ハイフン、概要は160文字の1行、本文は64KBまでです")
+		return fail("Use lowercase letters, numbers, and hyphens for the name. The summary is one line of up to 160 characters and the body is up to 64 KB.")
 	var _, write_err := vault.db.exec("INSERT INTO family_skills(name,summary,body) VALUES(?,?,?) ON CONFLICT(name) DO UPDATE SET summary=excluded.summary,body=excluded.body", [data.name, summary, data.body])
-	return fail("スキルを保存できませんでした", 500) if write_err else reply({"status": "saved"})
+	return fail("Could not save the skill.", 500) if write_err else reply({"status": "saved"})
 
 func skill_delete(req: GDWebRequest) -> GDWebResponse:
 	var _, err := vault.db.exec("DELETE FROM family_skills WHERE name=?", [req.get_param("name")])
-	return fail("スキルを削除できませんでした", 500) if err else reply({"status": "deleted"})
+	return fail("Could not delete the skill.", 500) if err else reply({"status": "deleted"})
 
 func family_key_download(_req: GDWebRequest) -> GDWebResponse:
 	return GD.web.with_header(GD.web.text(delivery.rule), "Content-Disposition", "attachment; filename=\"family-keys.env\"")
@@ -526,9 +529,8 @@ func create_family_invite(req: GDWebRequest) -> GDWebResponse:
 	for id in family_invites.keys():
 		if family_invites[id].until <= now:
 			family_invites.erase(id)
-	var crypto := Crypto.new()
-	var id := crypto.generate_random_bytes(16).hex_encode()
-	var key := GD.data.raw_to_base64url(crypto.generate_random_bytes(32))
+	var id := GD.data.random(16).hex_encode()
+	var key := GD.data.to_base64url(GD.data.random(32))
 	family_invites[id] = {"key": key, "until": now + INVITE_LIFETIME_MS}
 	var host := str(cfg.get("public_host", "localhost"))
 	var origin := ("https://" if req.is_tls() else "http://") + host + ":" + str(cfg.port)
@@ -541,14 +543,14 @@ func redeem_family_invite(req: GDWebRequest) -> GDWebResponse:
 	var invite: Dictionary = family_invites.get(id, {})
 	if invite.is_empty() or invite.until <= Time.get_ticks_msec():
 		family_invites.erase(id)
-		return fail("招待の有効期限が切れたか、使用済みです", 404)
+		return fail("The invitation expired or was already used.", 404)
 	# Prove possession of the URL fragment without sending the decryption key.
-	var proof := GD.data.sha256(("FK1-INVITE-PROOF:" + id + ":" + invite.key).to_utf8_buffer()).hex_encode()
-	if not Crypto.new().constant_time_compare(proof.to_utf8_buffer(), req.get_header("X-Keys-Invite-Proof").to_utf8_buffer()):
-		return fail("招待を確認できません", 403)
+	var proof := GD.data.sha256_hex("FK1-INVITE-PROOF:" + id + ":" + invite.key)
+	if not GD.data.equal(proof, req.get_header("X-Keys-Invite-Proof")):
+		return fail("Could not verify the invitation.", 403)
 	var sealed, err := delivery.seal_with(delivery.rule.to_utf8_buffer(), invite.key)
 	if err:
-		return fail("招待を処理できません", 500)
+		return fail("Could not redeem the invitation.", 500)
 	family_invites.erase(id)
 	return GD.web.text(sealed)
 
@@ -596,31 +598,31 @@ func load_distribution() -> Err:
 func save_distribution(req: GDWebRequest) -> GDWebResponse:
 	var data, err := req.read_json()
 	if err or not data is Dictionary or not data.get("skill") is String or not data.get("guide") is String:
-		return fail("配布文面を確認してください")
+		return fail("Check the distribution instructions.")
 	if data.get("revision") != distribution.revision:
-		return fail("別の画面で保存されています。開き直してください", 409)
+		return fail("This changed in another tab. Reopen it and try again.", 409)
 	var skill: String = data.skill.replace("\r\n", "\n").strip_edges() + "\n"
 	var guide: String = data.guide.replace("\r\n", "\n").strip_edges()
 	var header_end := skill.find("\n---\n", 4)
 	if not skill.begins_with("---\n") or header_end < 0 or skill.substr(header_end + 5).strip_edges().is_empty() or skill.to_utf8_buffer().size() > 32768:
-		return fail("SKILL.mdの名前・概要・本文を確認してください")
-	var header, header_err := GD.data.yaml_to_var(skill.substr(4, header_end - 4))
+		return fail("Check the name, description, and body in SKILL.md.")
+	var header, header_err := GD.data.from_yaml(skill.substr(4, header_end - 4))
 	if header_err or not header is Dictionary or header.get("name") != "family-keys" or not header.get("description") is String or header.description.strip_edges().is_empty():
-		return fail("SKILL.mdの名前・概要・本文を確認してください")
+		return fail("Check the name, description, and body in SKILL.md.")
 	if guide.to_utf8_buffer().size() > 4096 or guide.count("{{MCP_URL}}") != 1 or guide.count("{{SKILL_URL}}") != 1 or guide.count("{{INVITE_URL}}") != 1:
-		return fail("案内には3つのURL用の置換文字を1回ずつ残してください")
+		return fail("Keep all three URL placeholders exactly once.")
 	if skill.contains(delivery.secret) or guide.contains(delivery.secret):
-		return fail("配布文面から共通キーを削除してください")
+		return fail("Remove the shared key from the distribution text.")
 	var bytes := family_skill_zip
 	if skill != distribution.skill:
 		var archive_err: Err
 		bytes, archive_err = build_family_skill(skill)
 		if archive_err:
-			return fail("スキルZIPを更新できません", 500)
+			return fail("Could not update the skill archive.", 500)
 	var revision: int = distribution.revision + 1
 	var _, save_err := vault.db.exec("INSERT INTO family_distribution(id,skill,guide,revision) VALUES(1,?,?,?) ON CONFLICT(id) DO UPDATE SET skill=excluded.skill,guide=excluded.guide,revision=excluded.revision", [skill, guide, revision])
 	if save_err:
-		return fail("配布文面を保存できません", 500)
+		return fail("Could not save the distribution text.", 500)
 	distribution = {"skill": skill, "guide": guide, "revision": revision}
 	family_skill_zip = bytes
 	return reply(distribution)
@@ -635,37 +637,37 @@ func intake_page(_req: GDWebRequest) -> GDWebResponse:
 
 func intake_nonce(id: String) -> String:
 	# Bind to this vault and transaction, surviving service restarts.
-	return GD.data.hmac_sha256(vault.key.slice(32, 64), ("FK1-INTAKE-CSRF:" + id).to_utf8_buffer()).hex_encode()
+	return GD.data.hmac_sha256(vault.key.slice(32, 64), "FK1-INTAKE-CSRF:" + id).hex_encode()
 
 func paste_info(req: GDWebRequest) -> GDWebResponse:
 	var id := req.get_param("id")
 	if id.begins_with("cli-"):
-		return fail("入力依頼が見つかりません", 404)
+		return fail("Registration request not found.", 404)
 	if id.begins_with("batch-"):
 		var group := vault.intake_group(id)
 		if group.is_empty():
-			return fail("入力依頼が見つかりません", 404)
+			return fail("Registration request not found.", 404)
 		var items := group.map(func(ticket): return {"title": ticket.title, "purpose": ticket.note, "variable": ticket.variable})
 		return reply({"items": items, "status": group[0].status, "csrf": intake_nonce(id)})
 	var ticket := vault.intake(id)
 	if ticket.is_empty():
-		return fail("入力依頼が見つかりません", 404)
+		return fail("Registration request not found.", 404)
 	return reply({"title": ticket.title, "purpose": ticket.note, "variable": ticket.variable, "status": ticket.status, "csrf": intake_nonce(ticket.id)})
 
 func paste_complete(req: GDWebRequest) -> GDWebResponse:
 	var id := req.get_param("id")
 	if id.begins_with("cli-"):
-		return fail("入力依頼が見つかりません", 404)
+		return fail("Registration request not found.", 404)
 	if req.get_header("X-Intake-CSRF") != intake_nonce(id):
-		return reply({"error": "確認情報を更新して、もう一度OKを押してください。入力内容は保持されています。", "code": "INTAKE_NONCE_STALE"}, 403)
+		return reply({"error": "Confirmation expired. Your inputs are still here. Press OK again.", "code": "INTAKE_NONCE_STALE"}, 403)
 	if id.begins_with("batch-"):
 		return paste_group(req, id)
 	var ticket := vault.intake(id)
 	if ticket.is_empty() or ticket.status != "waiting":
-		return fail("この入力は完了済みか、存在しません", 409)
+		return fail("This registration is already complete or does not exist.", 409)
 	var data, err := req.read_json()
 	if err or not data is Dictionary:
-		return fail("キーを貼り付けてください")
+		return fail("Paste the key.")
 	var input, input_err := intake_input(ticket, data.get("value"), data.get("otpauth", ""))
 	if input_err:
 		return fail(str(input_err))
@@ -674,13 +676,13 @@ func paste_complete(req: GDWebRequest) -> GDWebResponse:
 func paste_group(req: GDWebRequest, id: String) -> GDWebResponse:
 	var group := vault.intake_group(id)
 	if group.is_empty() or group[0].status != "waiting":
-		return fail("この入力は完了済みか、存在しません", 409)
+		return fail("This registration is already complete or does not exist.", 409)
 	var data, err := req.read_json()
 	if err or not data is Dictionary or not data.get("values") is Array or data.values.size() != group.size():
-		return fail("必要なキーをすべて入力してください")
+		return fail("Enter all required keys.")
 	var uris = data.get("otpauths", [])
 	if not uris is Array or (data.has("otpauths") and uris.size() != group.size()):
-		return fail("二段階認証の入力を確認してください")
+		return fail("Check the two-factor inputs.")
 	var inputs: Array = []
 	for i in group.size():
 		var input, input_err := intake_input(group[i], data.values[i], "" if uris.is_empty() else uris[i])
@@ -690,16 +692,16 @@ func paste_group(req: GDWebRequest, id: String) -> GDWebResponse:
 	return save_intake(req, inputs)
 
 func valid_otpauth(uri: String) -> bool:
-	return uri.begins_with("otpauth://") and not uri.contains("\n") and not uri.contains("\r") and not preload("totp.gd").decode(uri).is_empty()
+	return uri.begins_with("otpauth://") and not uri.contains("\n") and not uri.contains("\r") and not totp.decode(uri).is_empty()
 
 func intake_input(ticket: Dictionary, value: Variant, otpauth: Variant) -> Dictionary, Err:
-	if not value is String or value.is_empty() or value.to_utf8_buffer().size() > Core.MAX_ENV:
-		return {}, Err("キーを貼り付けてください")
+	if not value is String or value.is_empty() or value.to_utf8_buffer().size() > core.MAX_ENV:
+		return {}, Err("Paste the key.")
 	if not otpauth is String or (not otpauth.is_empty() and not valid_otpauth(otpauth.strip_edges())):
-		return {}, Err("有効な otpauth URLを貼り付けてください")
-	var env, env_err := GD.data.dict_to_dotenv({ticket.variable: value})
+		return {}, Err("Paste a valid otpauth URL.")
+	var env, env_err := GD.data.to_dotenv({ticket.variable: value})
 	if env_err:
-		return {}, Err("環境変数名を確認してください")
+		return {}, Err("Check the environment variable name.")
 	var input := {"name": ticket.title, "note": ticket.note, "env": env, "intake_id": ticket.id}
 	if not otpauth.is_empty():
 		input["otp"] = {"variable": ticket.variable, "seed": otpauth.strip_edges()}
@@ -738,8 +740,8 @@ func decode_registration(data: Variant, totp_setup: bool = false) -> Dictionary:
 	var bytes, decrypt_err := delivery.unseal_registration(data)
 	if decrypt_err:
 		return {"error": "Authentication failed", "status": 403}
-	var title_bytes, title_err := GD.data.base64_to_raw(data.title)
-	var purpose_bytes, purpose_err := GD.data.base64_to_raw(data.purpose)
+	var title_bytes, title_err := GD.data.from_base64(data.title)
+	var purpose_bytes, purpose_err := GD.data.from_base64(data.purpose)
 	var title := title_bytes.get_string_from_utf8()
 	var purpose := purpose_bytes.get_string_from_utf8()
 	if title_err or purpose_err or title.strip_edges().is_empty() or title.length() > 160 or title.to_utf8_buffer() != title_bytes or purpose.to_utf8_buffer() != purpose_bytes:
@@ -759,8 +761,8 @@ func decode_registration(data: Variant, totp_setup: bool = false) -> Dictionary:
 			return {"error": "Invalid TOTP otpauth URI", "status": 400}
 		record["seed"] = parts[1].strip_edges()
 		env = parts[2]
-	var values, env_err := GD.data.dotenv_to_dict(env)
-	if env.to_utf8_buffer().size() > Core.MAX_ENV or env_err or values.size() != 1 or str(values.get(data.variable, "")).is_empty():
+	var values, env_err := GD.data.from_dotenv(env)
+	if env.to_utf8_buffer().size() > core.MAX_ENV or env_err or values.size() != 1 or str(values.get(data.variable, "")).is_empty():
 		return {"error": "Specify one nonempty dotenv variable", "status": 400}
 	record["env"] = env
 	return record
@@ -798,7 +800,7 @@ func register_cli(req: GDWebRequest) -> GDWebResponse:
 		inputs.append(input)
 	var saved, save_err := vault.put_many(inputs)
 	if save_err:
-		return fail("保存できませんでした", 409)
+		return fail("Could not save.", 409)
 	for item in saved:
 		audit(req, "intake_ok", item.id)
 	return reply({"status": "ok"})
@@ -806,10 +808,10 @@ func register_cli(req: GDWebRequest) -> GDWebResponse:
 # Audit identifiers only, without request bodies, names, variable values, or download URLs.
 func audit(req: GDWebRequest, action: String, id: String) -> void:
 	var event := {"at": int(Time.get_unix_time_from_system()), "ip": req.get_value("device").ip, "member": req.get_value("device").member, "action": action, "id": id}
-	GD.file.append_text(root.path_join("audit.jsonl"), GD.data.var_to_json(event)! + "\n")
+	GD.file.append_text(root.path_join("audit.jsonl"), GD.data.to_json(event)! + "\n")
 
-func search_env(query: String = "", queries: Array = []) -> Dictionary:
-	var terms := [query] if queries.is_empty() else queries
+func search_env(query: String = "", queries: Array[String] = []) -> Dictionary:
+	var terms: Array[String] = [query] if queries.is_empty() else queries
 	var items: Array = []
 	var seen := {}
 	for term in terms:
@@ -934,13 +936,13 @@ func setup_mcp() -> Err:
 		"name": Schema.str(), "action": Schema.str({"one_of": ["update", "delete", "totp"]}),
 		"id": text, "title": text, "purpose": text,
 	})
-	mcp_server.add_tool("search_env", search_env, {"description": "Search metadata. has_totp marks items with OTP.", "schema": {"query": search_text, "queries": {"minItems": 1, "maxItems": MAX_BATCH, "items": search_text}}, "reject_unknown": true})?
-	mcp_server.add_tool("prepare_env", prepare_env, {"description": "One encrypted download. bundle-json returns env and totp[ENV_NAME].", "schema": {"vars": {"type": "array", "items": {"anyOf": [string, selected]}}, "id": string, "otp": string}, "reject_unknown": true})?
-	mcp_server.add_tool("manage_env", manage_env, {"description": "Update, delete, or set otpauth via skill CLI.", "schema": manage})?
-	mcp_server.add_tool("family_skills", family_skills, {"description": "List, search, or get a skill URL.", "reject_unknown": true})?
-	mcp_server.add_tool("begin_intake", begin_intake, {"description": "Register ENVs in a form with optional otpauth. Use title and variable, or items.", "schema": begin})?
-	mcp_server.add_tool("intake_status", intake_status, {"description": "Get status.", "reject_unknown": true})?
-	mcp_server.add_tool("wait_intake", wait_intake, {"description": "Wait for registration.", "reject_unknown": true})?
+	mcp_server.add_tool(search_env, {"description": "Search metadata. has_totp marks items with OTP.", "schema": {"query": search_text, "queries": {"minItems": 1, "maxItems": MAX_BATCH, "items": search_text}}})?
+	mcp_server.add_tool(prepare_env, {"description": "One encrypted download. bundle-json returns env and totp[ENV_NAME].", "schema": {"vars": {"type": "array", "items": {"anyOf": [string, selected]}}, "id": string, "otp": string}})?
+	mcp_server.add_tool(manage_env, {"description": "Update, delete, or set otpauth via skill CLI.", "schema": manage})?
+	mcp_server.add_tool(family_skills, {"description": "List, search, or get a skill URL."})?
+	mcp_server.add_tool(begin_intake, {"description": "Register ENVs in a form with optional otpauth. Use title and variable, or items.", "schema": begin})?
+	mcp_server.add_tool(intake_status, {"description": "Get status."})?
+	mcp_server.add_tool(wait_intake, {"description": "Wait for registration."})?
 	return null
 
 func main(args) -> int:
@@ -949,7 +951,7 @@ func main(args) -> int:
 	if read_err:
 		printerr("Run ./keys init first")
 		return 1
-	var loaded, parse_err := GD.data.json_to_var(text)
+	var loaded, parse_err := GD.data.from_json(text)
 	if parse_err or not loaded is Dictionary:
 		printerr("Invalid server configuration")
 		return 1

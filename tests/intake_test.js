@@ -16,7 +16,7 @@ async function scenario(mode) {
   const original = elements['paste-form'];
   const posts = []; let reads = 0;
   const document = { getElementById: id => elements[id], documentElement: { dataset: {} }, title: 'fixture' };
-  vm.runInNewContext(script, { document, location: { pathname: '/intake/fixture' }, fetch: async (path, options = {}) => {
+  vm.runInNewContext(script, { t: text => text, keysLocale: {ready: Promise.resolve()}, document, location: { pathname: '/intake/fixture' }, fetch: async (path, options = {}) => {
     if (options.method === 'POST') {
       posts.push({ ...JSON.parse(options.body), csrf: options.headers['X-Intake-CSRF'] });
       if (mode === 'stale' && posts.length === 1) return { ok: false, status: 403, json: async () => ({ code: 'INTAKE_NONCE_STALE' }) };

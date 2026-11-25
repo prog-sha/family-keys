@@ -1,0 +1,59 @@
+:root {
+  color-scheme: light;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", sans-serif;
+  background: #fafbf8;
+  color: #23322c;
+  --green: #315c47;
+  --line: #e4e8df;
+  --muted: #596961;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+a { color: var(--green); text-underline-offset: .22em; }
+a:focus-visible { outline: 2px solid var(--green); outline-offset: 5px; }
+.wrap { width: min(1120px, calc(100vw - 48px)); margin-inline: auto; }
+header { border-bottom: 1px solid var(--line); background: #fff; }
+.top, .links, .brand { display: flex; align-items: center; gap: 20px; }
+.top { min-height: 76px; justify-content: space-between; }
+.brand { gap: 8px; font-size: 1.6rem; font-weight: 750; letter-spacing: -.06em; color: #23322c; text-decoration: none; }
+.mark { border-radius: 8px; background: var(--green); color: #fff; min-width: 30px; text-align: center; font-size: 1.2rem; padding: 3px; }
+.site-languages { display: flex; border: 1px solid var(--line); padding: 3px; border-radius: 8px; }
+.site-languages a { text-decoration: none; padding: 6px 10px; font-size: .875rem; border-radius: 5px; }
+.site-languages [aria-current] { background: #e8efe7; color: #264a38; font-weight: 650; }
+.hero { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: clamp(32px, 6vw, 88px); padding: clamp(50px, 8vw, 100px) 0; }
+.eyebrow { color: #426551; font-size: .875rem; font-weight: 650; letter-spacing: .06em; margin: 0 0 18px; }
+h1 { font-size: clamp(2.8rem, 5.6vw, 5rem); line-height: 1.05; letter-spacing: -.065em; margin: 0; }
+main[lang=ja] h1, [lang=ja] h1 { font-size: clamp(2.4rem, 4.6vw, 4.1rem); letter-spacing: -.05em; line-height: 1.18; }
+h2 { font-size: clamp(1.55rem, 3vw, 2.3rem); letter-spacing: -.035em; margin: 0 0 12px; }
+h3 { font-size: 1.125rem; margin: 0 0 8px; }
+p, li { line-height: 1.65; }
+.lead { color: var(--muted); font-size: 1.125rem; max-width: 40ch; margin: 24px 0; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; }
+.primary { color: #fff; background: var(--green); text-decoration: none; font-weight: 650; padding: 12px 18px; border-radius: 8px; }
+.panel { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 20px; box-shadow: 0 18px 36px #29443710; margin: 0; min-width: 0; }
+figcaption { color: var(--muted); margin: 14px 0 0; font-size: .875rem; }
+.vault-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid var(--line); font-weight: 700; }
+.badge { color: #315c47; background: #eaf1e8; padding: 4px 8px; border-radius: 6px; font-size: .875rem; white-space: nowrap; }
+.search { margin: 16px 0 12px; border: 1px solid var(--line); border-radius: 7px; padding: 10px 12px; color: var(--muted); font-size: .875rem; }
+.mock-item { display: flex; align-items: center; justify-content: space-between; min-width: 0; gap: 10px; border: 1px solid var(--line); margin-top: 9px; padding: 11px 12px; border-radius: 8px; font-size: .875rem; }
+.mock-item code { display: block; color: #456250; margin-top: 4px; overflow-wrap: anywhere; }
+.mock-item span { font-size: .8125rem; white-space: nowrap; color: var(--muted); }
+.section { border-top: 1px solid var(--line); padding-block: 52px; }
+.workflow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; padding: 0; list-style: none; margin: 22px 0 0; }
+.workflow li { padding: 20px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.workflow p, .local-note p { margin: 0; color: var(--muted); }
+.local-note { max-width: 72ch; }
+.local-note a { display: inline-block; margin-top: 12px; }
+footer { border-top: 1px solid var(--line); color: var(--muted); padding: 22px 0; font-size: .875rem; }
+@media (max-width: 800px) {
+  .hero { grid-template-columns: 1fr; }
+  .workflow { grid-template-columns: 1fr; gap: 12px; }
+}
+@media (max-width: 430px) {
+  .wrap { width: calc(100vw - 32px); }
+  .top, .links { gap: 10px; }
+  .top { min-height: 64px; }
+  .hero { padding-top: 44px; }
+  .panel { padding: 14px; }
+  .mock-item span { white-space: normal; }
+}

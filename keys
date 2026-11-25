@@ -5,7 +5,7 @@ base=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$base"
 runtime=${KEYS_GD:-$(command -v gd || true)}
 if [ -z "$runtime" ] || [ ! -x "$runtime" ]; then
-  echo "gd 0.9.0 with @wait and GD.ai.mcp is required. Put gd on PATH or set KEYS_GD." >&2
+  echo "A gd 0.9.0 build with GD.data.to_json and mcp.add_tool(fn) is required. Put gd on PATH or set KEYS_GD." >&2
   exit 1
 fi
 action=${1:-serve}

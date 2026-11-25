@@ -1,8 +1,7 @@
 # Lightweight quirc decoder port for flat QR screenshots, without external tools.
 # quirc Copyright (C) 2010-2012 Daniel Beer; see licenses/quirc.txt (ISC).
-extends RefCounted
+@import "./qr_tables"
 
-const Tables = preload("qr_tables.gd")
 const ALPHANUMERIC := "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:"
 var pixels: PackedByteArray
 var width: int
@@ -223,7 +222,7 @@ func reserved(version: int, size: int, x: int, y: int, alignment: Array) -> bool
 	return xi >= 0 and yi >= 0 and ((xi > 0 and xi < last) or (yi > 0 and yi < last) or (xi == last and yi == last))
 
 func decode(grid: PackedByteArray, size: int, version: int) -> String:
-	var params: Array = Tables.VERSIONS[version - 1]
+	var params: Array = qr_tables.VERSIONS[version - 1]
 	for format in format_values(grid, size):
 		var raw := PackedByteArray()
 		raw.resize(params[0])

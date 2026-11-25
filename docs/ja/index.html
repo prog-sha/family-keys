@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Family Keysは、MCPに対応した家族LAN向けの資格情報保管庫です。">
+  <title>Family Keys — 家族LANの保管庫</title>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="alternate" hreflang="en" href="../">
+</head>
+<body>
+  <header><div class="wrap top">
+    <a class="brand" href="./"><span class="mark" aria-hidden="true">⌘</span> keys.</a>
+    <div class="links">
+      <a href="https://github.com/prog-sha/family-keys">GitHub</a>
+      <nav class="site-languages" aria-label="言語"><a href="../" lang="en" hreflang="en" aria-label="英語">EN</a><a href="./" lang="ja" aria-current="page">JA</a></nav>
+    </div>
+  </div></header>
+  <main class="wrap">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Family Keys</p>
+        <h1>家族LANの保管庫</h1>
+        <p class="lead">鍵を家のネットワークに保管し、エージェントが必要な鍵を探して、プロジェクトへ直接届けます。</p>
+        <div class="actions">
+          <a class="primary" href="https://github.com/prog-sha/family-keys#run-locally">セットアップ</a>
+          <a href="#workflow">使い方</a>
+        </div>
+      </div>
+      <figure class="panel">
+        <div class="vault-top"><span><span aria-hidden="true">⌘</span> 保管庫</span><span class="badge">家族LAN</span></div>
+        <div class="search">⌕ &nbsp; 用途で検索</div>
+        <div class="mock-item"><div><strong>Discordボット</strong><code>DISCORD_BOT_TOKEN</code></div><span>共用</span></div>
+        <div class="mock-item"><div><strong>ビルド用ストレージ</strong><code>STORAGE_ACCESS_KEY</code></div><span>共用</span></div>
+        <div class="mock-item"><div><strong>ダッシュボードログイン</strong><code>DASHBOARD_PASSWORD</code></div><span>二段階認証</span></div>
+        <figcaption>サンプル項目を使った保管庫の表示例。</figcaption>
+      </figure>
+    </section>
+    <section class="section" id="workflow">
+      <h2>使い方</h2>
+      <ol class="workflow">
+        <li><h3>登録</h3><p>ENV名と用途を付けて鍵を登録します。二段階認証も同じ項目に設定できます。</p></li>
+        <li><h3>検索</h3><p>MCPにつないだエージェントが名前や用途で探し、項目の情報を受け取ります。</p></li>
+        <li><h3>取得</h3><p>値は認証付きの暗号文で受け取ります。ローカルの.envへ追記したり、コマンドへ直接渡したりできます。</p></li>
+      </ol>
+    </section>
+    <section class="section local-note">
+      <h2>信頼できるLANで運用</h2>
+      <p>最初はlocalhostで起動し、必要な端末だけを許可します。保存した二段階認証の設定内容は表示されず、保管庫で上書きできます。</p>
+      <a href="https://github.com/prog-sha/family-keys#secure-lan-operation">LANのセキュリティガイド（英語）</a>
+    </section>
+  </main>
+  <footer><div class="wrap">Family Keys · <a href="https://github.com/prog-sha/family-keys">GitHubでソースを見る</a></div></footer>
+</body>
+</html>
