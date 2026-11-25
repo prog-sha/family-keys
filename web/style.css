@@ -25,3 +25,6 @@ body.paste-page{display:flex;align-items:center;justify-content:center;min-heigh
 .language-corner { position: absolute; top: 20px; right: 20px; }
 .language-select { font: inherit; font-size: .875rem; padding: .375rem .5rem; color: var(--green); background: #fff; border: 1px solid var(--line); border-radius: 6px; }
 .language-select:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+
+.otp-configured:not([hidden]) { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-block: 12px; }
+.otp-badge { background: #e8efe7; color: #315c47; padding: 4px 8px; border-radius: 6px; font-size: .875rem; }

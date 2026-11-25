@@ -87,9 +87,15 @@
       </details>
       <details class="panel">
         <summary>Two-factor authentication (TOTP)</summary><p class="subtle">Setup details can only be replaced. Only the current code can be shown.</p>
-        <div id="editor-otp-row" hidden><button id="editor-otp" type="button" class="secondary">Show current code</button> <output id="editor-otp-code"></output></div>
+        <div id="editor-otp-row" class="otp-configured" hidden>
+          <strong class="otp-badge">Configured</strong>
+          <button id="editor-otp-replace" type="button" class="secondary" aria-controls="editor-otp-fields">Replace setup</button>
+          <button id="editor-otp" type="button" class="secondary">Show current code</button> <output id="editor-otp-code"></output>
+        </div>
+        <div id="editor-otp-fields">
         <label class="field">Original ENV name<input id="otp-variable" maxlength="256" placeholder="Example: SERVICE_PASSWORD" autocomplete="off"></label>
-        <label class="field">New setup key or otpauth URL<input id="otp-seed" type="password" maxlength="4096" autocomplete="off" autocapitalize="off" placeholder="Leave blank to keep the current setup"></label>
+        <label class="field">New setup key or otpauth URL<input id="otp-seed" type="password" maxlength="4096" autocomplete="off" autocapitalize="off" placeholder="Base32 or otpauth://…"></label>
+        </div>
         <label id="otp-remove-row" hidden><input id="otp-remove" type="checkbox">Remove two-factor setup</label>
       </details>
       <div id="form-error" class="form-error" role="alert" hidden></div>
@@ -100,7 +106,12 @@
   <dialog id="otp-settings" aria-labelledby="otp-settings-title">
     <form id="otp-settings-form">
       <div class="dialog-head"><h2 id="otp-settings-title">Add two-factor authentication</h2><button id="close-otp-settings" type="button" class="icon-button" aria-label="Close">×</button></div>
-      <p id="otp-settings-name"></p><p class="subtle">Setup details can only be replaced. Only the current code can be shown.</p>
+      <p id="otp-settings-name"></p>
+      <div id="otp-settings-configured" class="otp-configured" hidden>
+        <strong class="otp-badge">Configured</strong>
+        <button id="otp-settings-replace" type="button" class="secondary" aria-controls="otp-settings-fields">Replace setup</button>
+      </div>
+      <div id="otp-settings-fields">
       <label class="field">Original ENV name <select id="otp-settings-variable" required></select></label>
       <div class="panel" id="otp-paste-area" tabindex="0">
         <p>Paste a QR image here</p>
@@ -108,6 +119,7 @@
         <p id="otp-qr-status" role="status" hidden></p>
       </div>
       <label class="field">New setup key or otpauth URL<input id="otp-settings-seed" type="password" maxlength="4096" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+      </div>
       <div id="otp-settings-error" class="form-error" role="alert" hidden></div>
       <div class="dialog-footer"><button id="otp-settings-save" type="submit" class="primary">Save</button></div>
     </form>

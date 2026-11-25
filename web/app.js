@@ -36,7 +36,7 @@ function render() {
     if (item.variables.length > 3) vars.append(node('code', '', `+${item.variables.length - 3}`));
     const bottom = node('div', 'card-bottom'); const actions = node('div', 'card-actions');
     actions.append(button(t("Edit"), () => openEditor(item)));
-    if (item.variables.length > 0) actions.append(button(item.otp_variable ? t("Replace two-factor setup") : t("Add two-factor authentication"), () => openOtpSettings(item)));
+    if (item.variables.length > 0) actions.append(button(item.otp_variable ? t("Two-factor settings") : t("Add two-factor authentication"), () => openOtpSettings(item)));
     actions.append(button(t("Delete"), () => confirmDelete(item), 'delete'));
     bottom.append(node('span', '', relativeTime(item.updated)), actions); card.append(top, vars, bottom); $('items').append(card);
   }
@@ -111,7 +111,6 @@ async function openEditor(item = null) {
   $('entry-name').value = item?.name || '';
   $('otp-variable').value = item?.otp_variable || '';
   $('otp-remove-row').hidden = !item?.otp_variable;
-  $('editor-otp-row').hidden = !item?.otp_variable;
   $('editor-title').textContent = item ? t("Edit key") : t("Add key");
   $('save-entry').textContent = item ? t("Save changes") : t("Save key");
   $('form-error').hidden = true;
@@ -126,27 +125,48 @@ async function openEditor(item = null) {
       for (const field of data.fields) addEnvField(field);
     } catch (error) { showError(error.message); return; }
   }
+  const configured = Boolean(state.editing?.otp_variable);
+  $('editor-otp-row').hidden = !configured;
+  $('editor-otp-replace').hidden = !configured;
+  $('editor-otp-fields').hidden = configured;
   if (!$('env-fields').children.length) addEnvField();
   $('editor').showModal();
   $('entry-name').focus();
 }
+$('editor-otp-replace').addEventListener('click', () => {
+  $('editor-otp-replace').hidden = true;
+  $('editor-otp-fields').hidden = false;
+  $('otp-seed').value = '';
+  $('otp-seed').focus();
+});
 function openOtpSettings(item) {
   const dialog = $('otp-settings');
   $('otp-settings-form').reset();
   dialog.dataset.item = item.id;
-  $('otp-settings-title').textContent = item.otp_variable ? t("Replace two-factor setup") : t("Add two-factor authentication");
+  $('otp-settings-title').textContent = item.otp_variable ? t("Two-factor settings") : t("Add two-factor authentication");
   $('otp-settings-name').textContent = item.name;
   $('otp-settings-variable').replaceChildren(...item.variables.map(name => new Option(name, name)));
   $('otp-settings-variable').value = item.otp_variable || item.variables[0];
   otpRaster = null;
   otpImageGeneration++;
   $('otp-qr-status').hidden = true;
-  $('otp-settings-save').disabled = false;
-  $('otp-settings-seed').placeholder = item.otp_variable ? t("Leave blank to keep the current setup") : t("Base32 or otpauth://…");
+  const configured = Boolean(item.otp_variable);
+  $('otp-settings-configured').hidden = !configured;
+  $('otp-settings-replace').hidden = !configured;
+  $('otp-settings-fields').hidden = configured;
+  $('otp-settings-save').disabled = configured;
+  $('otp-settings-seed').placeholder = t("Base32 or otpauth://…");
   $('otp-settings-error').hidden = true;
   dialog.showModal();
-  $('otp-paste-area').focus();
+  $(configured ? 'otp-settings-replace' : 'otp-paste-area').focus();
 }
+$('otp-settings-replace').addEventListener('click', () => {
+  $('otp-settings-replace').hidden = true;
+  $('otp-settings-fields').hidden = false;
+  $('otp-settings-seed').value = '';
+  $('otp-settings-save').disabled = false;
+  $('otp-settings-seed').focus();
+});
 async function readOtpImage(file) {
   const generation = ++otpImageGeneration;
   const status = $('otp-qr-status');
@@ -184,6 +204,7 @@ async function readOtpImage(file) {
 }
 $('otp-qr-file').addEventListener('change', event => { if (event.target.files[0]) readOtpImage(event.target.files[0]); });
 $('otp-settings').addEventListener('paste', event => {
+  if ($('otp-settings-fields').hidden) return;
   const image = Array.from(event.clipboardData?.items || []).find(item => item.kind === 'file' && item.type.startsWith('image/'))?.getAsFile();
   if (!image) return;
   event.preventDefault();
@@ -198,6 +219,7 @@ $('otp-settings-seed').addEventListener('input', () => {
 });
 $('otp-settings-form').addEventListener('submit', async event => {
   event.preventDefault();
+  if ($('otp-settings-fields').hidden) return;
   const dialog = $('otp-settings');
   const submit = $('otp-settings-save');
   const errorText = $('otp-settings-error');

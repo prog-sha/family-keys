@@ -192,6 +192,9 @@
   "Delete {name}?": "「{name}」を削除しますか？",
   "Language": "言語",
   "Setup details can only be replaced. Only the current code can be shown.": "保存した設定は上書きのみ可能です。表示できるのは現在の認証コードです。",
+  "Configured": "設定済み",
+  "Replace setup": "置き換える",
+  "Two-factor settings": "二段階認証の設定",
   "Current code": "現在の認証コード",
   "Two-factor setup saved": "二段階認証の設定を保存しました。"
 }
